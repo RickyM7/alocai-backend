@@ -21,7 +21,6 @@ class GoogleSignInAPIView(APIView):
         Recebe o token do Google e valida. Retorna os dados do usuário.
         """
         token = request.data.get('credential')
-        print(f"Received token: {token}")  # Log do token recebido (opcional)
 
         if not token:
             return Response({'error': 'Credential not provided'}, status=400)
@@ -34,8 +33,6 @@ class GoogleSignInAPIView(APIView):
                 token, requests.Request(), client_id
             )
 
-            # Printa os dados do usuário no console (opcional)
-            print(user_data)
         except ValueError:
             return Response({'error': 'Invalid token'}, status=403)
 
