@@ -1,8 +1,7 @@
 from django.urls import path
-from . import views
+from .views import GoogleSignInAPIView, GoogleSignOutAPIView
 
 urlpatterns = [
-    path('', views.sign_in, name='sign_in'),
-    path('sign-out/', views.sign_out, name='sign_out'),
-    path('auth-receiver/', views.auth_receiver, name='auth_receiver'),
+    path('api/google-sign-in/', GoogleSignInAPIView.as_view(), name='google_sign_in'),
+    path('api/google-sign-out/', GoogleSignOutAPIView.as_view(), name='google_sign_out'),
 ]

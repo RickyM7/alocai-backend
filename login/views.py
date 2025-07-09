@@ -1,60 +1,54 @@
 import os
 from dotenv import load_dotenv
 
-from django.http import HttpResponse
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 from google.oauth2 import id_token
 from google.auth.transport import requests
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-@csrf_exempt
-def sign_in(request):
+class GoogleSignInAPIView(APIView):
     """
-    Renderiza a página de login. Se o usuário já estiver logado,
-    mostra as informações dele.
+    Endpoint para autenticação com Google OAuth.
     """
-    # Constrói a URI de callback dinamicamente para não ter um link fixo.
-    login_uri = request.build_absolute_uri(reverse('auth_receiver'))
-    context = {
-        'login_uri': login_uri,
-         'google_client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-    }
-    return render(request, 'login/sign_in.html', context)
+    permission_classes = [AllowAny]
 
-@csrf_exempt
-def auth_receiver(request):
+    def post(self, request):
+        """
+        Recebe o token do Google e valida. Retorna os dados do usuário.
+        """
+        token = request.data.get('credential')
+
+        if not token:
+            return Response({'error': 'Credential not provided'}, status=400)
+
+        try:
+            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+            
+            # Verifica se o token é válido
+            user_data = id_token.verify_oauth2_token(
+                token, requests.Request(), client_id
+            )
+
+        except ValueError:
+            return Response({'error': 'Invalid token'}, status=403)
+
+        # Retorna os dados do usuário como resposta JSON
+        return Response({'user_data': user_data}, status=200)
+
+
+class GoogleSignOutAPIView(APIView):
     """
-    URL chamada pelo Google depois que o usuário faz login com sucesso.
-    Essa view verifica o token e cria a sessão do usuário.
+    Endpoint para logout do usuário.
     """
-    token = request.POST.get('credential')
-
-    if not token:
-        # Se o Google não enviar a credencial
-        return HttpResponse(status=400, content="Credential POST data not found.")
-
-    try:
-        client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-        
-        # Verifica se o token é válido
-        user_data = id_token.verify_oauth2_token(
-            token, requests.Request(), client_id
-        )
-    except ValueError:
-        # Se o token for inválido
-        return HttpResponse(status=403) # 403 Forbidden é apropriado aqui
-
-    # Se o token for válido, os dados de usuário são salvos na sessão do Django
-    request.session['user_data'] = user_data
-
-    # Redireciona o usuário de volta para a página inicial, que agora o mostrará logado.
-    return redirect('sign_in')
-
-def sign_out(request):
-    if 'user_data' in request.session:
-        del request.session['user_data']
-    return redirect('sign_in')
+    def post(self, request):
+        """
+        Remove os dados do usuário da sessão.
+        """
+        if 'user_data' in request.session:
+            del request.session['user_data']
+            return Response({'message': 'User logged out successfully'}, status=200)
+        return Response({'error': 'No user logged in'}, status=400)
