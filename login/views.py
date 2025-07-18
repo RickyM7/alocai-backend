@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from google.oauth2 import id_token
 from google.auth.transport import requests
+from django.http import JsonResponse
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -52,3 +53,13 @@ class GoogleSignOutAPIView(APIView):
             del request.session['user_data']
             return Response({'message': 'User logged out successfully'}, status=200)
         return Response({'error': 'No user logged in'}, status=400)
+
+
+# Função para "health check" que verifica se o app está funcionando
+def health_check(request):
+    data = {
+        'status': 'ok',
+        'message': 'App está rodando'
+    }
+    return JsonResponse(data)
+
