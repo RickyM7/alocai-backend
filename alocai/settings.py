@@ -61,6 +61,9 @@ INSTALLED_APPS = [
     'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
     'login',
+    'resource',
+    'booking',
+    'booking_request'
 ]
 
 MIDDLEWARE = [
