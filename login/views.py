@@ -7,9 +7,14 @@ from rest_framework.permissions import AllowAny
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.http import JsonResponse
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
+
+from django.contrib.auth.models import User
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class GoogleSignInAPIView(APIView):
     """
@@ -19,7 +24,8 @@ class GoogleSignInAPIView(APIView):
 
     def post(self, request):
         """
-        Recebe o token do Google e valida. Retorna os dados do usuário.
+        Recebe o token do Google, valida, busca ou cria um usuário
+        e retorna os tokens de acesso e atualização (JWT).
         """
         token = request.data.get('credential')
 
@@ -28,17 +34,44 @@ class GoogleSignInAPIView(APIView):
 
         try:
             client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-            
-            # Verifica se o token é válido
             user_data = id_token.verify_oauth2_token(
                 token, requests.Request(), client_id
             )
-
         except ValueError:
             return Response({'error': 'Invalid token'}, status=403)
 
-        # Retorna os dados do usuário como resposta JSON
-        return Response({'user_data': user_data}, status=200)
+        email = user_data.get('email')
+        if not email:
+            return Response({'error': 'Email not found in Google token'}, status=400)
+
+        # Busca ou cria o usuário
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                'username': email,
+                'first_name': user_data.get('given_name', ''),
+                'last_name': user_data.get('family_name', ''),
+            }
+        )
+
+        # Se o usuário foi criado agora, define uma senha inutilizável
+        if created:
+            user.set_unusable_password()
+            user.save()
+
+        # Gera os tokens para o usuário
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+            }
+        }, status=200)
 
 
 class GoogleSignOutAPIView(APIView):
@@ -62,4 +95,6 @@ def health_check(request):
         'message': 'App está rodando'
     }
     return JsonResponse(data)
+
+
 
