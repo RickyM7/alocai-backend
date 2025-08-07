@@ -1,5 +1,6 @@
 # from django.shortcuts import render
 from rest_framework import generics, permissions
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import Agendamento
 from .serializers import AgendamentoSerializer
 
@@ -10,6 +11,7 @@ class CriarAgendamentoView(generics.CreateAPIView):
     serializer_class = AgendamentoSerializer
 
     # Apenas usuários autenticados possam acessar
+    authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
