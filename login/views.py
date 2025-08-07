@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.http import JsonResponse
@@ -34,13 +34,13 @@ class GoogleSignInAPIView(APIView):
 
         try:
             client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-            user_data = id_token.verify_oauth2_token(
+            user_data_from_google = id_token.verify_oauth2_token(
                 token, requests.Request(), client_id
             )
         except ValueError:
             return Response({'error': 'Invalid token'}, status=403)
 
-        email = user_data.get('email')
+        email = user_data_from_google.get('email')
         if not email:
             return Response({'error': 'Email not found in Google token'}, status=400)
 
@@ -49,8 +49,8 @@ class GoogleSignInAPIView(APIView):
             email=email,
             defaults={
                 'username': email,
-                'first_name': user_data.get('given_name', ''),
-                'last_name': user_data.get('family_name', ''),
+                'first_name': user_data_from_google.get('given_name', ''),
+                'last_name': user_data_from_google.get('family_name', ''),
             }
         )
 
@@ -65,9 +65,10 @@ class GoogleSignInAPIView(APIView):
         return Response({
             'refresh': str(refresh),
             'access': str(refresh.access_token),
-            'user': {
+            'user_data': {
                 'id': user.id,
                 'email': user.email,
+                'name': f"{user.first_name} {user.last_name}".strip(),
                 'first_name': user.first_name,
                 'last_name': user.last_name,
             }
@@ -78,14 +79,11 @@ class GoogleSignOutAPIView(APIView):
     """
     Endpoint para logout do usuário.
     """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
-        """
-        Remove os dados do usuário da sessão.
-        """
-        if 'user_data' in request.session:
-            del request.session['user_data']
-            return Response({'message': 'User logged out successfully'}, status=200)
-        return Response({'error': 'No user logged in'}, status=400)
+        # Usando o JWT, o logout acontece no próprio frontend
+        return Response({"detail": "User logged out successfully'"}, status=status.HTTP_200_OK)
 
 
 # Função para "health check" que verifica se o app está funcionando
