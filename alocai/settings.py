@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'login',
     'resource',
     'booking',
@@ -181,3 +183,9 @@ CORS_ALLOWED_ORIGINS = [
 #         "level": "INFO",
 #     },
 # }
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
