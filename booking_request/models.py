@@ -1,14 +1,13 @@
 from django.db import models
-
+from django.conf import settings
 from booking.models import Agendamento
 from login.models import Usuario
 
 class Solicitacao(models.Model):
     id_solicitacao = models.AutoField(primary_key=True)
     id_usuario_solicitante = models.ForeignKey(
-        Usuario, 
-        on_delete=models.CASCADE, 
-        db_column='id_usuario_solicitante',
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
         related_name='solicitacoes_solicitadas'
     )
     id_agendamento = models.ForeignKey(
@@ -22,9 +21,8 @@ class Solicitacao(models.Model):
     observacoes_admin = models.TextField(null=True, blank=True)
     data_ultima_atualizacao_status = models.DateTimeField(auto_now=True)
     id_responsavel = models.ForeignKey(
-        Usuario, 
-        on_delete=models.CASCADE, 
-        db_column='id_usuario_responsavel',
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
         related_name='solicitacoes_responsaveis'
     )
 

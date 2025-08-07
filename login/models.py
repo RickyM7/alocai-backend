@@ -13,5 +13,17 @@ class Usuario(models.Model):
     data_criacao_conta = models.DateTimeField(auto_now_add=True)
     ultimo_login = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_active(self):
+        # Usa o campo 'status_conta' para determinar se o usuário está ativo
+        return self.status_conta == 'ativo'
+
+    # O Django precisa disso para o cliente de teste e o admin
+    is_staff = False
+
     class Meta:
         db_table = 'usuario'
