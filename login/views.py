@@ -9,12 +9,12 @@ from google.auth.transport import requests
 from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-from django.contrib.auth.models import User
-from rest_framework_simplejwt.tokens import RefreshToken
+from .models import Usuario
 
 class GoogleSignInAPIView(APIView):
     """
@@ -44,7 +44,7 @@ class GoogleSignInAPIView(APIView):
         if not email:
             return Response({'error': 'Email not found in Google token'}, status=400)
 
-        # Busca ou cria o usuário
+        # Busca ou cria o usuário no sistema de autenticação do Django
         user, created = User.objects.get_or_create(
             email=email,
             defaults={
@@ -54,10 +54,17 @@ class GoogleSignInAPIView(APIView):
             }
         )
 
-        # Se o usuário foi criado agora, define uma senha inutilizável
+        # Se o usuário foi criado agora, executa as ações de primeiro login
         if created:
             user.set_unusable_password()
             user.save()
+
+            Usuario.objects.create(
+                nome=f"{user.first_name} {user.last_name}".strip(),
+                email=user.email,
+                senha_hash='managed_by_google_oauth',
+                status_conta='ativo'
+            )
 
         # Gera os tokens para o usuário
         refresh = RefreshToken.for_user(user)
@@ -83,7 +90,7 @@ class GoogleSignOutAPIView(APIView):
 
     def post(self, request):
         # Usando o JWT, o logout acontece no próprio frontend
-        return Response({"detail": "User logged out successfully'"}, status=status.HTTP_200_OK)
+        return Response({"detail": "User logged out successfully'"}, status=200)
 
 
 # Função para "health check" que verifica se o app está funcionando
@@ -93,6 +100,3 @@ def health_check(request):
         'message': 'App está rodando'
     }
     return JsonResponse(data)
-
-
-
