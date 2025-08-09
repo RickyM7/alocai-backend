@@ -55,6 +55,7 @@ class GoogleSignInAPIView(APIView):
                 'email': email,
                 'nome': full_name,
                 'data_criacao_conta': timezone.now(),
+                'senha_hash': 'manage_google_oauth',  # Senha não é necessária para login via Google
             }
         )
 
@@ -62,13 +63,6 @@ class GoogleSignInAPIView(APIView):
             # Usuário já existia
             user.ultimo_login = timezone.now()
             user.save()
-
-            Usuario.objects.create(
-                nome=f"{user.first_name} {user.last_name}".strip(),
-                email=user.email,
-                senha_hash='managed_by_google_oauth',
-                status_conta='ativo'
-            )
 
         # Gera os tokens para o usuário
         refresh = RefreshToken.for_user(user)
