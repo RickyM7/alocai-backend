@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,8 +9,9 @@ from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import User
+from rest_framework import status
+
+from login.models import Usuario
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -44,19 +46,21 @@ class GoogleSignInAPIView(APIView):
         if not email:
             return Response({'error': 'Email not found in Google token'}, status=400)
 
-        # Busca ou cria o usuário no sistema de autenticação do Django
-        user, created = User.objects.get_or_create(
+        full_name = f"{user_data_from_google.get('given_name', '')} {user_data_from_google.get('family_name', '')}".strip()
+
+        # Busca ou cria o usuário
+        user, created = Usuario.objects.get_or_create(
             email=email,
             defaults={
-                'username': email,
-                'first_name': user_data_from_google.get('given_name', ''),
-                'last_name': user_data_from_google.get('family_name', ''),
+                'email': email,
+                'nome': full_name,
+                'data_criacao_conta': timezone.now(),
             }
         )
 
-        # Se o usuário foi criado agora, executa as ações de primeiro login
-        if created:
-            user.set_unusable_password()
+        if not created:
+            # Usuário já existia
+            user.ultimo_login = timezone.now()
             user.save()
 
             Usuario.objects.create(
@@ -73,11 +77,10 @@ class GoogleSignInAPIView(APIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'user_data': {
-                'id': user.id,
+                'id_usuario': user.id_usuario,
                 'email': user.email,
-                'name': f"{user.first_name} {user.last_name}".strip(),
-                'first_name': user.first_name,
-                'last_name': user.last_name,
+                'nome': user.nome,
+                'data_criacao_conta': user.data_criacao_conta,
             }
         }, status=200)
 
@@ -92,6 +95,13 @@ class GoogleSignOutAPIView(APIView):
         # Usando o JWT, o logout acontece no próprio frontend
         return Response({"detail": "User logged out successfully'"}, status=200)
 
+class UserAPIView(APIView):
+    """
+    Endpoint para definir tipo do usuário.
+    """
+    def put(self, request):
+        # Lógica para definir tipo do usuário
+        return Response({"detail": "User type defined successfully"}, status=status.HTTP_200_OK)
 
 # Função para "health check" que verifica se o app está funcionando
 def health_check(request):

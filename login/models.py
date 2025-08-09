@@ -21,6 +21,10 @@ class Usuario(models.Model):
     def is_active(self):
         # Usa o campo 'status_conta' para determinar se o usuário está ativo
         return self.status_conta == 'ativo'
+    
+    @property
+    def id(self):
+        return self.id_usuario
 
     # O Django precisa disso para o cliente de teste e o admin
     is_staff = False
