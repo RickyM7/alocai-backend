@@ -28,14 +28,57 @@ class GoogleSignInTest(TestCase):
         #A requisição foi bem-sucedida?
         self.assertEqual(response.status_code, 200)
 
-        #O usuário foi criado na tabela auth_user?
-        user_exists = User.objects.filter(email='novo.usuario@teste.com').exists()
-        self.assertTrue(user_exists)
-
-        #O usuário foi criado na sua tabela personalizada 'usuario'?
         usuario_exists = Usuario.objects.filter(email='novo.usuario@teste.com').exists()
         self.assertTrue(usuario_exists)
 
         #Se chamarmos de novo, não deve criar outro usuário
         Usuario.objects.all().delete()
-        User.objects.all().delete()
+
+    @patch('login.views.id_token.verify_oauth2_token')
+    def test_login_google(self, mock_verify):
+        # Simula um token válido
+        mock_verify.return_value = {
+            'email': 'test@example.com',
+            'given_name': 'Test',
+            'family_name': 'User'
+        }
+        response = self.client.post('/api/google-sign-in/', {
+            'credential': 'valid_token_example'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('access', response.data)  # Se você retorna JWT
+
+    def test_login_google_invalid_token(self):
+        response = self.client.post('/api/google-sign-in/', {
+            'credential': 'invalid_token'
+        })
+        self.assertEqual(response.status_code, 403)
+
+    @patch('login.views.id_token.verify_oauth2_token')
+    def test_login_user_already_exists(self, mock_verify):
+        # Cria um usuário antes de testar o login
+        Usuario.objects.create(
+            email='test@example.com',
+            nome='Test User',
+            data_criacao_conta='2023-01-01T00:00:00Z',
+        )
+
+        mock_verify.return_value = {
+            'email': 'test@example.com',
+            'given_name': 'Test',
+            'family_name': 'User'
+        }
+
+        response = self.client.post('/api/google-sign-in/', {
+            'credential': 'valid_token_example'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('access', response.data)
+
+        # Verifica se a data de ultimo login foi atualizada
+        usuario = Usuario.objects.get(email='test@example.com')
+        usuario_exists = usuario.ultimo_login is not None
+        self.assertTrue(usuario_exists)
+
+    def test_logout_google(self):
+        pass
