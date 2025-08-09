@@ -9,6 +9,7 @@ from google.auth.transport import requests
 from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from rest_framework import status
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
