@@ -65,7 +65,8 @@ INSTALLED_APPS = [
     'login',
     'resource',
     'booking',
-    'booking_request'
+    'booking_request',
+    'user_profile',
 ]
 
 MIDDLEWARE = [
