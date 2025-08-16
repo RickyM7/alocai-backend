@@ -10,3 +10,10 @@ class PerfilAcesso(models.Model):
 
     def __str__(self):
         return self.nome_perfil
+    
+
+from rest_framework import serializers
+class PerfilAcessoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PerfilAcesso
+        fields = '__all__'

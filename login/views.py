@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import status
 
 from login.models import Usuario
+from user_profile.models import PerfilAcesso
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -67,16 +68,28 @@ class GoogleSignInAPIView(APIView):
         # Gera os tokens para o usuário
         refresh = RefreshToken.for_user(user)
 
-        return Response({
-            'refresh': str(refresh),
+        response = Response({
             'access': str(refresh.access_token),
             'user_data': {
                 'id_usuario': user.id_usuario,
                 'email': user.email,
                 'nome': user.nome,
                 'data_criacao_conta': user.data_criacao_conta,
+                'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None
             }
         }, status=200)
+
+        # Define o cookie de refresh token
+        response.set_cookie(
+            key='refresh_token',
+            value=str(refresh),
+            httponly=True,
+            secure=True,
+            samesite='Lax',
+            path='/'
+        )
+
+        return response
 
 
 class GoogleSignOutAPIView(APIView):
@@ -92,10 +105,28 @@ class GoogleSignOutAPIView(APIView):
 class UserAPIView(APIView):
     """
     Endpoint para definir tipo do usuário.
+    Recebe o id_perfil e atribui ao usuário autenticado.
     """
-    def put(self, request):
-        # Lógica para definir tipo do usuário
-        return Response({"detail": "User type defined successfully"}, status=status.HTTP_200_OK)
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, id_usuario):
+        id_perfil = request.data.get('id_perfil')
+
+        if not id_perfil:
+            return Response({"error": "id_perfil is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            perfil = PerfilAcesso.objects.get(id_perfil=id_perfil)
+
+            user = Usuario.objects.get(id_usuario=id_usuario)
+            user.id_perfil = perfil
+            user.save()
+        except PerfilAcesso.DoesNotExist:
+            return Response({"error": "Perfil de acesso não encontrado"}, status=status.HTTP_404_NOT_FOUND)
+        except Usuario.DoesNotExist:
+            return Response({"error": "Usuário não encontrado"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"detail": "Perfil do usuário definido com sucesso"}, status=status.HTTP_200_OK)
 
 # Função para "health check" que verifica se o app está funcionando
 def health_check(request):
