@@ -23,11 +23,19 @@ from rest_framework_simplejwt.views import (
 )
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # Admin do Django
+    path('django-admin/', admin.site.urls),
+    
+    # Nossas URLs de API
     path('', include('login.urls')),  # Inclui as rotas do app login
     path('health_check', health_check, name='health_check'),
     path('api/', include('booking.urls')),
     path('api/', include('user_profile.urls')),  # Inclui as rotas do app user_profile
+    
+    # Rotas administrativas para gerenciamento de recursos
+    path('api/admin/', include('resource.urls')),  # Inclui as rotas administrativas
+    
+    # Autenticação JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
