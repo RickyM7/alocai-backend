@@ -1,9 +1,11 @@
 from django.db import models
 
+from user_profile.models import PerfilAcesso
+
 class Usuario(models.Model):
     id_usuario = models.AutoField(primary_key=True)
     #id_instituicao = models.IntegerField()
-    #id_perfil = models.IntegerField()
+    id_perfil = models.ForeignKey(PerfilAcesso, on_delete=models.CASCADE, db_column='id_perfil', null=True)
     nome = models.CharField(max_length=255)
     email = models.EmailField(max_length=255, unique=True)
     senha_hash = models.CharField(max_length=255)
