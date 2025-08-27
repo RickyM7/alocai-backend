@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, permissions, generics
+from user_profile.permissions import IsAdministrador
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -22,7 +23,8 @@ class RecursoAdminViewSet(viewsets.ModelViewSet):
     """
     queryset = Recurso.objects.all()
     serializer_class = RecursoSerializer
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    # Acesso restrito a Administradores
+    permission_classes = [IsAdministrador]
     
     def get_queryset(self):
         """
