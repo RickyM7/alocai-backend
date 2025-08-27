@@ -1,5 +1,6 @@
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from user_profile.permissions import IsServidor, IsAdministrador
 from .models import Agendamento, AgendamentoPai
 from .serializers import AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, AgendamentoPaiDetailSerializer
 
@@ -16,7 +17,7 @@ class CriarAgendamentoView(generics.CreateAPIView):
     queryset = AgendamentoPai.objects.all()
     serializer_class = AgendamentoPaiCreateSerializer
     authentication_classes = [JWTAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsServidor | IsAdministrador]
 
     def perform_create(self, serializer):
         serializer.save(id_usuario=self.request.user)

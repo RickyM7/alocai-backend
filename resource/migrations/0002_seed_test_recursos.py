@@ -11,7 +11,7 @@ def create_test_recursos(apps, schema_editor):
         descricao="Laboratório equipado com 25 computadores",
         capacidade=25,
         localizacao="Bloco A - Sala 101",
-        status_recurso="ativo",
+        status_recurso="disponivel",
         politicas_uso_especificas="Uso restrito a aulas de programação."
     )
 
@@ -20,7 +20,7 @@ def create_test_recursos(apps, schema_editor):
         descricao="Sala com projetor e mesa para 10 pessoas",
         capacidade=10,
         localizacao="Bloco B - Sala 202",
-        status_recurso="ativo",
+        status_recurso="disponivel",
         politicas_uso_especificas="Reservas limitadas a 2 horas."
     )
 
@@ -29,7 +29,7 @@ def create_test_recursos(apps, schema_editor):
         descricao="Auditório principal da instituição",
         capacidade=100,
         localizacao="Bloco C - Térreo",
-        status_recurso="ativo",
+        status_recurso="disponivel",
         politicas_uso_especificas="Agendamentos precisam ser aprovados."
     )
 
