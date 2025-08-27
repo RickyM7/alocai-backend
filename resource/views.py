@@ -1,10 +1,19 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
 from .models import Recurso
 from .serializers import RecursoSerializer
+
+class RecursoListView(generics.ListAPIView):
+    """
+    Endpoint para listar todos os recursos disponíveis para agendamento.
+    Requer apenas autenticação.
+    """
+    queryset = Recurso.objects.all().order_by('nome_recurso')
+    serializer_class = RecursoSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
 class RecursoAdminViewSet(viewsets.ModelViewSet):
     """

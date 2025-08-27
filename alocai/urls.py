@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from login.views import health_check # add rota de health_check
+from resource.views import RecursoListView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -31,6 +32,9 @@ urlpatterns = [
     path('health_check', health_check, name='health_check'),
     path('api/', include('booking.urls')),
     path('api/', include('user_profile.urls')),  # Inclui as rotas do app user_profile
+
+    # URL para listar recursos para todos os usuários logados
+    path('api/recursos/', RecursoListView.as_view(), name='listar-recursos'),
     
     # Rotas administrativas para gerenciamento de recursos
     path('api/admin/', include('resource.urls')),  # Inclui as rotas administrativas

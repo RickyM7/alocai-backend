@@ -48,6 +48,7 @@ class GoogleSignInAPIView(APIView):
             return Response({'error': 'Email not found in Google token'}, status=400)
 
         full_name = f"{user_data_from_google.get('given_name', '')} {user_data_from_google.get('family_name', '')}".strip()
+        picture_url = user_data_from_google.get('picture')
 
         # Busca ou cria o usuário
         user, created = Usuario.objects.get_or_create(
@@ -55,14 +56,19 @@ class GoogleSignInAPIView(APIView):
             defaults={
                 'email': email,
                 'nome': full_name,
+                'foto_perfil': picture_url,
                 'data_criacao_conta': timezone.now(),
-                'senha_hash': 'manage_google_oauth',  # Senha não é necessária para login via Google
+                # 'senha_hash': 'manage_google_oauth',  # Senha não é necessária para login via Google
+                'status_conta': 'ativo',
             }
         )
 
         if not created:
             # Usuário já existia
             user.ultimo_login = timezone.now()
+            user.foto_perfil = picture_url
+            if user.status_conta != 'ativo':
+                user.status_conta = 'ativo'
             user.save()
 
         # Gera os tokens para o usuário
@@ -74,6 +80,7 @@ class GoogleSignInAPIView(APIView):
                 'id_usuario': user.id_usuario,
                 'email': user.email,
                 'nome': user.nome,
+                'foto_perfil': user.foto_perfil,
                 'data_criacao_conta': user.data_criacao_conta,
                 'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None
             }
