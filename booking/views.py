@@ -1,20 +1,36 @@
-# from django.shortcuts import render
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import Agendamento
-from .serializers import AgendamentoSerializer
+from .models import Agendamento, AgendamentoPai
+from .serializers import AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, AgendamentoPaiDetailSerializer
+
+class ListarAgendamentosView(generics.ListAPIView):
+    serializer_class = ListarAgendamentosSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Agendamento.objects.filter(agendamento_pai__id_usuario=user).order_by('-data_inicio')
 
 class CriarAgendamentoView(generics.CreateAPIView):
-    # Endpoint para criar um novo agendamento
-    # Apenas usuários autenticados podem criar agendamentos
-    queryset = Agendamento.objects.all()
-    serializer_class = AgendamentoSerializer
-
-    # Apenas usuários autenticados possam acessar
+    queryset = AgendamentoPai.objects.all()
+    serializer_class = AgendamentoPaiCreateSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Associa automaticamente o agendamento ao usuário que fez a requisição
-        # Isso aqui tem que mudar (se necessário) pra quando a parte de persistência for implementada
         serializer.save(id_usuario=self.request.user)
+
+class AgendamentoPaiDetailView(generics.RetrieveAPIView):
+    """
+    Endpoint para retornar os detalhes completos de um agendamento pai,
+    incluindo todos os seus filhos.
+    """
+    queryset = AgendamentoPai.objects.all()
+    serializer_class = AgendamentoPaiDetailSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'id_agendamento_pai'
+
+    def get_queryset(self):
+        return AgendamentoPai.objects.filter(id_usuario=self.request.user)

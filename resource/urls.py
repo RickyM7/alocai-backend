@@ -7,5 +7,5 @@ router = DefaultRouter()
 router.register(r'recursos', RecursoAdminViewSet, basename='recurso-admin')
 
 urlpatterns = [
-    path('admin/', include(router.urls)),
+    path('', include(router.urls)),
 ]

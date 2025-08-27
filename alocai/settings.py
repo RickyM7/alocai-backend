@@ -14,6 +14,7 @@ import os
 import dj_database_url
 from dotenv import load_dotenv
 from pathlib import Path
+from datetime import timedelta
 
 load_dotenv()
 
@@ -164,6 +165,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://alocai-front.onrender.com"
 ]
+CORS_ALLOW_CREDENTIALS = True
 
 # Permitir subdomínios ou padrões mais complexos:
 # CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -185,8 +187,24 @@ CORS_ALLOWED_ORIGINS = [
 #     },
 # }
 
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    "USER_ID_FIELD": "id_usuario",
+    "USER_ID_CLAIM": "user_id",
+    'REFRESH_TOKEN_COOKIE_SAMESITE': 'None',
+    'REFRESH_TOKEN_COOKIE_SECURE': True,
 }
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+AUTH_USER_MODEL = 'login.Usuario'
