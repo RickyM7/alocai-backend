@@ -1,11 +1,10 @@
 from rest_framework import viewsets, status, permissions, generics
-from user_profile.permissions import IsAdministrador
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-
 from .models import Recurso
-from .serializers import RecursoSerializer
+from .serializers import RecursoSerializer, DashboardRecursoSerializer
+from rest_framework.permissions import AllowAny
 
 class RecursoListView(generics.ListAPIView):
     """
@@ -23,8 +22,7 @@ class RecursoAdminViewSet(viewsets.ModelViewSet):
     """
     queryset = Recurso.objects.all()
     serializer_class = RecursoSerializer
-    # Acesso restrito a Administradores
-    permission_classes = [IsAdministrador]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
     
     def get_queryset(self):
         """
@@ -73,3 +71,12 @@ class RecursoAdminViewSet(viewsets.ModelViewSet):
                 'reservado'
             ]
         })
+
+class DashboardView(generics.ListAPIView):
+    """
+    Endpoint para a visualização do dashboard
+    (mostra recursos e os agendamentos aprovados)
+    """
+    queryset = Recurso.objects.filter(status_recurso='ativo').order_by('nome_recurso')
+    serializer_class = DashboardRecursoSerializer
+    permission_classes = [AllowAny]

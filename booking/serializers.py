@@ -70,3 +70,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ['id_usuario', 'nome', 'email']
+
+class PublicAgendamentoSerializer(serializers.ModelSerializer):
+    # Visualização pública de agendamentos (para usar no dashboard)
+    recurso = serializers.CharField(source='agendamento_pai.id_recurso.nome_recurso', read_only=True)
+    
+    class Meta:
+        model = Agendamento
+        fields = [
+            'id_agendamento', 'recurso', 'data_inicio', 'hora_inicio',
+            'data_fim', 'hora_fim', 'status_agendamento'
+        ]
