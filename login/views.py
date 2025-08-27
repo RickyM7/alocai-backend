@@ -82,7 +82,8 @@ class GoogleSignInAPIView(APIView):
                 'nome': user.nome,
                 'foto_perfil': user.foto_perfil,
                 'data_criacao_conta': user.data_criacao_conta,
-                'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None
+                'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None,
+                'nome_perfil': user.id_perfil.nome_perfil if user.id_perfil else None
             }
         }, status=200)
 
