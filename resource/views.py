@@ -77,6 +77,6 @@ class DashboardView(generics.ListAPIView):
     Endpoint para a visualização do dashboard
     (mostra recursos e os agendamentos aprovados)
     """
-    queryset = Recurso.objects.filter(status_recurso='ativo').order_by('nome_recurso')
+    queryset = Recurso.objects.filter(status_recurso='disponivel').order_by('nome_recurso')
     serializer_class = DashboardRecursoSerializer
     permission_classes = [AllowAny]
