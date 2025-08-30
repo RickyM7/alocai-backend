@@ -50,7 +50,7 @@ class AgendamentoPaiDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgendamentoPai
         fields = [
-            'id_agendamento_pai', 'recurso', 'finalidade', 'observacoes', 
+            'id_agendamento_pai', 'recurso', 'finalidade', 'observacoes',
             'responsavel', 'data_criacao', 'agendamentos_filhos'
         ]
 
@@ -58,13 +58,36 @@ class ListarAgendamentosSerializer(serializers.ModelSerializer):
     recurso = serializers.CharField(source='agendamento_pai.id_recurso.nome_recurso', read_only=True)
     finalidade = serializers.CharField(source='agendamento_pai.finalidade', read_only=True)
     observacoes = serializers.CharField(source='agendamento_pai.observacoes', read_only=True)
-    
+
     class Meta:
         model = Agendamento
         fields = [
             'id_agendamento', 'recurso', 'data_inicio', 'hora_inicio',
+            'hora_fim',
             'finalidade', 'status_agendamento', 'agendamento_pai', 'observacoes'
         ]
+
+# Serializers do ADM
+class AdminAgendamentoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Agendamento
+        fields = [
+            'id_agendamento', 'data_inicio', 'hora_inicio', 'hora_fim',
+            'status_agendamento'
+        ]
+
+class AdminAgendamentoPaiSerializer(serializers.ModelSerializer):
+    agendamentos_filhos = AdminAgendamentoSerializer(many=True, read_only=True)
+    recurso = serializers.CharField(source='id_recurso.nome_recurso', read_only=True)
+    solicitante = serializers.CharField(source='id_usuario.nome', read_only=True)
+
+    class Meta:
+        model = AgendamentoPai
+        fields = [
+            'id_agendamento_pai', 'recurso', 'finalidade', 'observacoes',
+            'solicitante', 'data_criacao', 'agendamentos_filhos'
+        ]
+
 
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
@@ -74,10 +97,11 @@ class UsuarioSerializer(serializers.ModelSerializer):
 class PublicAgendamentoSerializer(serializers.ModelSerializer):
     # Visualização pública de agendamentos (para usar no dashboard)
     recurso = serializers.CharField(source='agendamento_pai.id_recurso.nome_recurso', read_only=True)
-    
+    finalidade = serializers.CharField(source='agendamento_pai.finalidade', read_only=True)
+
     class Meta:
         model = Agendamento
         fields = [
             'id_agendamento', 'recurso', 'data_inicio', 'hora_inicio',
-            'data_fim', 'hora_fim', 'status_agendamento'
+            'data_fim', 'hora_fim', 'status_agendamento', 'finalidade'
         ]
