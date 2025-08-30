@@ -119,28 +119,40 @@ class UserAPIView(APIView):
 
     def put(self, request, id_usuario):
         id_perfil_novo = request.data.get('id_perfil')
-        usuario_logado = request.user
-
-        # Impede que o admin altere o próprio perfil para um não-admin
-        if usuario_logado.id_usuario == id_usuario:
-            try:
-                perfil_novo = PerfilAcesso.objects.get(id_perfil=id_perfil_novo)
-                if perfil_novo.nome_perfil != 'Administrador':
-                    return Response(
-                        {"error": "Administradores não podem remover o próprio privilégio."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            except PerfilAcesso.DoesNotExist:
-                 return Response({"error": "Perfil de acesso não encontrado"}, status=status.HTTP_404_NOT_FOUND)
-
         if not id_perfil_novo:
             return Response({"error": "id_perfil is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        usuario_logado = request.user
         
         try:
-            perfil = PerfilAcesso.objects.get(id_perfil=id_perfil_novo)
-            user = Usuario.objects.get(id_usuario=id_usuario)
-            user.id_perfil = perfil
-            user.save()
+            perfil_novo = PerfilAcesso.objects.get(id_perfil=id_perfil_novo)
+            user_a_ser_editado = Usuario.objects.get(id_usuario=id_usuario)
+
+            # Impede que o admin altere o próprio perfil para um não-admin
+            is_admin_editing_self = (
+                usuario_logado.id_usuario == user_a_ser_editado.id_usuario and
+                usuario_logado.id_perfil and
+                usuario_logado.id_perfil.nome_perfil == 'Administrador'
+            )
+
+            if is_admin_editing_self and perfil_novo.nome_perfil != 'Administrador':
+                return Response(
+                    {"error": "Administradores não podem remover o próprio privilégio."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Um usuário só pode editar a si mesmo, a menos que seja um administrador
+            is_admin = usuario_logado.id_perfil and usuario_logado.id_perfil.nome_perfil == 'Administrador'
+            if not (usuario_logado.id_usuario == user_a_ser_editado.id_usuario or is_admin):
+                 return Response(
+                    {"error": "Você não tem permissão para alterar este perfil."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Se passar pelas verificações, atualiza o perfil
+            user_a_ser_editado.id_perfil = perfil_novo
+            user_a_ser_editado.save()
+
         except PerfilAcesso.DoesNotExist:
             return Response({"error": "Perfil de acesso não encontrado"}, status=status.HTTP_404_NOT_FOUND)
         except Usuario.DoesNotExist:
