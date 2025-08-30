@@ -3,21 +3,21 @@ from dotenv import load_dotenv
 
 from django.utils import timezone
 from rest_framework.views import APIView
+from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import status
 
-from login.models import Usuario
+from .models import Usuario
 from user_profile.models import PerfilAcesso
+from user_profile.permissions import IsAdministrador
+from .serializers import UserAdminSerializer
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
-
-from .models import Usuario
 
 class GoogleSignInAPIView(APIView):
     """
@@ -118,14 +118,26 @@ class UserAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, id_usuario):
-        id_perfil = request.data.get('id_perfil')
+        id_perfil_novo = request.data.get('id_perfil')
+        usuario_logado = request.user
 
-        if not id_perfil:
+        # Impede que o admin altere o próprio perfil para um não-admin
+        if usuario_logado.id_usuario == id_usuario:
+            try:
+                perfil_novo = PerfilAcesso.objects.get(id_perfil=id_perfil_novo)
+                if perfil_novo.nome_perfil != 'Administrador':
+                    return Response(
+                        {"error": "Administradores não podem remover o próprio privilégio."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            except PerfilAcesso.DoesNotExist:
+                 return Response({"error": "Perfil de acesso não encontrado"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not id_perfil_novo:
             return Response({"error": "id_perfil is required"}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            perfil = PerfilAcesso.objects.get(id_perfil=id_perfil)
-
+            perfil = PerfilAcesso.objects.get(id_perfil=id_perfil_novo)
             user = Usuario.objects.get(id_usuario=id_usuario)
             user.id_perfil = perfil
             user.save()
@@ -135,6 +147,15 @@ class UserAPIView(APIView):
             return Response({"error": "Usuário não encontrado"}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({"detail": "Perfil do usuário definido com sucesso"}, status=status.HTTP_200_OK)
+
+
+class UserListView(generics.ListAPIView):
+    """
+    Endpoint para o admin listar todos os usuários
+    """
+    queryset = Usuario.objects.all().order_by('nome')
+    serializer_class = UserAdminSerializer
+    permission_classes = [IsAdministrador]
 
 # Função para "health check" que verifica se o app está funcionando
 def health_check(request):

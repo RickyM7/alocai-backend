@@ -5,13 +5,16 @@ from django.shortcuts import get_object_or_404
 from .models import Recurso
 from .serializers import RecursoSerializer, DashboardRecursoSerializer
 from rest_framework.permissions import AllowAny
+from user_profile.permissions import IsAdministrador
+from booking.models import Agendamento
+from booking.serializers import PublicAgendamentoSerializer
 
 class RecursoListView(generics.ListAPIView):
     """
     Endpoint para listar todos os recursos disponíveis para agendamento.
     Requer apenas autenticação.
     """
-    queryset = Recurso.objects.all().order_by('nome_recurso')
+    queryset = Recurso.objects.filter(status_recurso='disponivel').order_by('nome_recurso')
     serializer_class = RecursoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -22,7 +25,7 @@ class RecursoAdminViewSet(viewsets.ModelViewSet):
     """
     queryset = Recurso.objects.all()
     serializer_class = RecursoSerializer
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdministrador]
     
     def get_queryset(self):
         """
@@ -77,6 +80,29 @@ class DashboardView(generics.ListAPIView):
     Endpoint para a visualização do dashboard
     (mostra recursos e os agendamentos aprovados)
     """
-    queryset = Recurso.objects.filter(status_recurso='disponivel').order_by('nome_recurso')
+    queryset = Recurso.objects.all().order_by('nome_recurso')
     serializer_class = DashboardRecursoSerializer
     permission_classes = [AllowAny]
+
+class CalendarAgendamentosView(generics.ListAPIView):
+    """
+    Endpoint que retorna todos os agendamentos aprovados
+    para serem exibidos no calendário do dashboard
+    """
+    queryset = Agendamento.objects.filter(status_agendamento='aprovado').order_by('data_inicio')
+    serializer_class = PublicAgendamentoSerializer
+    permission_classes = [AllowAny]
+
+class RecursoAgendamentosView(generics.ListAPIView):
+    """
+    Endpoint que retorna os agendamentos aprovados de um recurso
+    """
+    serializer_class = PublicAgendamentoSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        recurso_id = self.kwargs.get('id_recurso')
+        return Agendamento.objects.filter(
+            agendamento_pai__id_recurso=recurso_id,
+            status_agendamento='aprovado'
+        ).order_by('data_inicio')

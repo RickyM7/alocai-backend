@@ -16,8 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from login.views import health_check # add rota de health_check
-from resource.views import RecursoListView, DashboardView
+from login.views import health_check
+from resource.views import RecursoListView, DashboardView, CalendarAgendamentosView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -28,19 +28,22 @@ urlpatterns = [
     path('django-admin/', admin.site.urls),
     
     # Nossas URLs de API
-    path('', include('login.urls')),  # Inclui as rotas do app login
+    path('', include('login.urls')),
     path('health_check', health_check, name='health_check'),
     path('api/', include('booking.urls')),
-    path('api/', include('user_profile.urls')),  # Inclui as rotas do app user_profile
+    path('api/', include('user_profile.urls')),
 
-    # URL pública para o dashboard
+    # URL pública para o dashboard (visão de lista)
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
+
+    # URL para os dados do calendário geral
+    path('api/dashboard/calendar/', CalendarAgendamentosView.as_view(), name='dashboard-calendar'),
 
     # URL para listar recursos para todos os usuários logados
     path('api/recursos/', RecursoListView.as_view(), name='listar-recursos'),
     
     # Rotas administrativas para gerenciamento de recursos
-    path('api/admin/', include('resource.urls')),  # Inclui as rotas administrativas
+    path('api/admin/', include('resource.urls')),
     
     # Autenticação JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
