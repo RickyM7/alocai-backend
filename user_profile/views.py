@@ -13,7 +13,7 @@ class PerfilAcessoView(APIView):
         """
         Método GET para retornar informações do perfil de acesso.
         """
-        profiles = PerfilAcesso.objects.all()
+        profiles = PerfilAcesso.objects.filter(visibilidade=True)  # Filtra apenas perfis visíveis
 
         # Serializa os dados dos perfis de acesso
         serializer = PerfilAcessoSerializer(profiles, many=True)
