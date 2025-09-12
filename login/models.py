@@ -37,12 +37,13 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     status_conta = models.CharField(max_length=20, default='ativo')
     data_criacao_conta = models.DateTimeField(auto_now_add=True)
     ultimo_login = models.DateTimeField(null=True, blank=True)
-    
+    google_id = models.CharField(max_length=255, null=True, blank=True, unique=True, db_index=True)
+
     objects = UsuarioManager()
-    
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nome']
-    
+
     @property
     def is_authenticated(self):
         return True
@@ -50,7 +51,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     @property
     def id(self):
         return self.id_usuario
-    
+
     @property
     def pk(self):
         return self.id_usuario
