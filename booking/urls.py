@@ -5,7 +5,7 @@ from .views import (
     AgendamentoPaiDetailView,
     AdminAgendamentoListView,
     AdminAgendamentoStatusUpdateView,
-    AdminAgendamentoPaiStatusUpdateView,
+    AdminAgendamentoPaiManageView,
     UserAgendamentoPaiStatusUpdateView,
     UserAgendamentoStatusUpdateView,
     RecursoDisponibilidadeView
@@ -22,8 +22,8 @@ urlpatterns = [
     path('admin/agendamentos/', AdminAgendamentoListView.as_view(), name='admin-listar-agendamentos'), 
     # URL para o adm atualizar o status de uma solicitação individual (PUT/PATCH)
     path('admin/agendamentos/<int:id_agendamento>/status/', AdminAgendamentoStatusUpdateView.as_view(), name='admin-atualizar-status-agendamento'),
-    # URL para o adm aprovar/negar todas as solicitações de um agendamento pai (PUT/PATCH)
-    path('admin/agendamentos/pai/<int:id_agendamento_pai>/status/', AdminAgendamentoPaiStatusUpdateView.as_view(), name='admin-atualizar-status-agendamento-pai'),
+    # URL para o adm aprovar/negar/apagar todas as solicitações de um agendamento pai (PUT/PATCH/DELETE)
+    path('admin/agendamentos/pai/<int:id_agendamento_pai>/', AdminAgendamentoPaiManageView.as_view(), name='admin-gerenciar-agendamento-pai'),
     # URL para o usuário marcar sua reserva como concluída (PUT/PATCH)
     path('agendamentos/pai/<int:id_agendamento_pai>/status/', UserAgendamentoPaiStatusUpdateView.as_view(), name='user-atualizar-status-agendamento-pai'),
     # URL para o usuário marcar um horário específico como concluído (PUT/PATCH)

@@ -112,10 +112,11 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
 
         return Response(self.get_serializer(instance).data)
 
-class AdminAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
+class AdminAgendamentoPaiManageView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Endpoint para o administrador aprovar ou negar todas as solicitações
-    de um agendamento pai
+    Endpoint para o administrador gerenciar um agendamento pai:
+    - Aprovar/negar todos os filhos (PUT)
+    - Deletar a solicitação inteira (DELETE)
     """
     queryset = AgendamentoPai.objects.all()
     serializer_class = AdminAgendamentoPaiSerializer
