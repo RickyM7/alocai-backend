@@ -7,6 +7,7 @@ from .models import Agendamento, AgendamentoPai
 from .serializers import AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer, AdminAgendamentoPaiSerializer
 from collections import defaultdict
 from datetime import datetime
+from django.utils import timezone
 
 class ListarAgendamentosView(generics.ListAPIView):
     """
@@ -19,6 +20,21 @@ class ListarAgendamentosView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        now = timezone.now()
+
+        agendamentos_expirados = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='aprovado',
+            data_fim__lt=now.date()
+        )
+        agendamentos_expirados_hoje = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='aprovado',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_expirados | agendamentos_expirados_hoje).update(status_agendamento='concluido')
+        
         return AgendamentoPai.objects.filter(id_usuario=user).prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
 class CriarAgendamentoView(generics.CreateAPIView):
@@ -48,7 +64,22 @@ class AdminAgendamentoListView(generics.ListAPIView):
     """
     Endpoint para o administrador listar todas as solicitações de agendamento, agrupadas por AgendamentoPai
     """
-    queryset = AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
+    def get_queryset(self):
+        now = timezone.now()
+
+        agendamentos_expirados = Agendamento.objects.filter(
+            status_agendamento='aprovado',
+            data_fim__lt=now.date()
+        )
+        agendamentos_expirados_hoje = Agendamento.objects.filter(
+            status_agendamento='aprovado',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_expirados | agendamentos_expirados_hoje).update(status_agendamento='concluido')
+        
+        return AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
+    
     serializer_class = AdminAgendamentoPaiSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdministrador]
