@@ -41,6 +41,13 @@ class Agendamento(models.Model):
     hora_fim = models.TimeField()
     status_agendamento = models.CharField(max_length=20)
     data_ultima_atualizacao = models.DateTimeField(auto_now=True)
+    gerenciado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="agendamentos_gerenciados",
+        null=True,
+        blank=True
+    )
     
     class Meta:
         db_table = 'agendamento'

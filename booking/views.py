@@ -4,9 +4,14 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from user_profile.permissions import IsServidor, IsAdministrador
 from .models import Agendamento, AgendamentoPai
-from .serializers import AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer, AdminAgendamentoPaiSerializer
+from .serializers import (
+    AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, 
+    AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer, 
+    AdminAgendamentoPaiSerializer, AdminAgendamentoPaiUpdateSerializer
+)
 from collections import defaultdict
 from datetime import datetime
+from django.utils import timezone
 
 class ListarAgendamentosView(generics.ListAPIView):
     """
@@ -19,6 +24,34 @@ class ListarAgendamentosView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        now = timezone.localtime()
+
+        agendamentos_aprovados_expirados = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='aprovado',
+            data_fim__lt=now.date()
+        )
+        agendamentos_aprovados_expirados_hoje = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='aprovado',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_aprovados_expirados | agendamentos_aprovados_expirados_hoje).update(status_agendamento='concluido')
+        
+        agendamentos_pendentes_expirados = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='pendente',
+            data_fim__lt=now.date()
+        )
+        agendamentos_pendentes_expirados_hoje = Agendamento.objects.filter(
+            agendamento_pai__id_usuario=user,
+            status_agendamento='pendente',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_pendentes_expirados | agendamentos_pendentes_expirados_hoje).update(status_agendamento='negado')
+
         return AgendamentoPai.objects.filter(id_usuario=user).prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
 class CriarAgendamentoView(generics.CreateAPIView):
@@ -48,10 +81,36 @@ class AdminAgendamentoListView(generics.ListAPIView):
     """
     Endpoint para o administrador listar todas as solicitações de agendamento, agrupadas por AgendamentoPai
     """
-    queryset = AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
     serializer_class = AdminAgendamentoPaiSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdministrador]
+
+    def get_queryset(self):
+        now = timezone.localtime()
+
+        agendamentos_aprovados_expirados = Agendamento.objects.filter(
+            status_agendamento='aprovado',
+            data_fim__lt=now.date()
+        )
+        agendamentos_aprovados_expirados_hoje = Agendamento.objects.filter(
+            status_agendamento='aprovado',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_aprovados_expirados | agendamentos_aprovados_expirados_hoje).update(status_agendamento='concluido')
+        
+        agendamentos_pendentes_expirados = Agendamento.objects.filter(
+            status_agendamento='pendente',
+            data_fim__lt=now.date()
+        )
+        agendamentos_pendentes_expirados_hoje = Agendamento.objects.filter(
+            status_agendamento='pendente',
+            data_fim=now.date(),
+            hora_fim__lt=now.time()
+        )
+        (agendamentos_pendentes_expirados | agendamentos_pendentes_expirados_hoje).update(status_agendamento='negado')
+
+        return AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
 class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
     """
@@ -68,43 +127,51 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
         novo_status = request.data.get("status_agendamento")
 
         if novo_status not in ['aprovado', 'negado']:
-            return Response(
-                {"error": "Status inválido. Use 'aprovado' ou 'negado'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Status inválido. Use 'aprovado' ou 'negado'."}, status=status.HTTP_400_BAD_REQUEST)
         
         instance.status_agendamento = novo_status
+        instance.gerenciado_por = request.user
         instance.save()
         
         if novo_status == 'negado' and instance.agendamento_pai:
-            instance.agendamento_pai.agendamentos_filhos.exclude(pk=instance.pk).update(status_agendamento='negado')
+            instance.agendamento_pai.agendamentos_filhos.exclude(pk=instance.pk).update(status_agendamento='negado', gerenciado_por=request.user)
 
         return Response(self.get_serializer(instance).data)
 
-class AdminAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
+class AdminAgendamentoPaiManageView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Endpoint para o administrador aprovar ou negar todas as solicitações
-    de um agendamento pai
+    Endpoint para o administrador gerenciar um agendamento pai:
+    - Aprovar/negar todos os filhos (PUT)
+    - Deletar a solicitação inteira (DELETE)
     """
     queryset = AgendamentoPai.objects.all()
-    serializer_class = AdminAgendamentoPaiSerializer
     permission_classes = [IsAdministrador]
     lookup_field = 'id_agendamento_pai'
 
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            if 'finalidade' in self.request.data:
+                 return AdminAgendamentoPaiUpdateSerializer
+            return AdminAgendamentoPaiSerializer
+        return AdminAgendamentoPaiSerializer
+
     def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        novo_status = request.data.get("status_agendamento")
+        if "status_agendamento" in request.data:
+            instance = self.get_object()
+            novo_status = request.data.get("status_agendamento")
 
-        if novo_status not in ['aprovado', 'negado']:
-            return Response(
-                {"error": "Status inválido. Use 'aprovado' ou 'negado'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            if novo_status not in ['aprovado', 'negado']:
+                return Response(
+                    {"error": "Status inválido. Use 'aprovado' ou 'negado'."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        instance.agendamentos_filhos.update(status_agendamento=novo_status)
-        instance.refresh_from_db()
-
-        return Response(self.get_serializer(instance).data)
+            instance.agendamentos_filhos.update(status_agendamento=novo_status, gerenciado_por=request.user)
+            instance.refresh_from_db()
+            serializer = AdminAgendamentoPaiSerializer(instance)
+            return Response(serializer.data)
+        
+        return super().update(request, *args, **kwargs)
 
 class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
     """
@@ -122,10 +189,7 @@ class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
         novo_status = request.data.get("status_agendamento")
 
         if novo_status != 'concluido':
-            return Response(
-                {"error": "Status inválido. Apenas 'concluido' é permitido por esta rota."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Status inválido. Apenas 'concluido' é permitido por esta rota."}, status=status.HTTP_400_BAD_REQUEST)
 
         instance.agendamentos_filhos.update(status_agendamento=novo_status)
         recurso = instance.id_recurso
@@ -157,10 +221,7 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
         novo_status = request.data.get("status_agendamento")
 
         if novo_status != 'concluido':
-            return Response(
-                {"error": "Ação não permitida. Apenas 'concluido' é válido."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Ação não permitida. Apenas 'concluido' é válido."}, status=status.HTTP_400_BAD_REQUEST)
 
         instance.status_agendamento = novo_status
         instance.save()
