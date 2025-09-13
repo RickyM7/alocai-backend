@@ -1,5 +1,15 @@
 from django.urls import path
-from .views import CriarAgendamentoView, ListarAgendamentosView, AgendamentoPaiDetailView, AdminAgendamentoListView, AdminAgendamentoStatusUpdateView, AdminAgendamentoPaiStatusUpdateView, UserAgendamentoPaiStatusUpdateView, UserAgendamentoStatusUpdateView
+from .views import (
+    ListarAgendamentosView,
+    CriarAgendamentoView,
+    AgendamentoPaiDetailView,
+    AdminAgendamentoListView,
+    AdminAgendamentoStatusUpdateView,
+    AdminAgendamentoPaiStatusUpdateView,
+    UserAgendamentoPaiStatusUpdateView,
+    UserAgendamentoStatusUpdateView,
+    RecursoDisponibilidadeView
+)
 
 urlpatterns = [
     # URL para criar um agendamento (POST)
@@ -14,8 +24,10 @@ urlpatterns = [
     path('admin/agendamentos/<int:id_agendamento>/status/', AdminAgendamentoStatusUpdateView.as_view(), name='admin-atualizar-status-agendamento'),
     # URL para o adm aprovar/negar todas as solicitações de um agendamento pai (PUT/PATCH)
     path('admin/agendamentos/pai/<int:id_agendamento_pai>/status/', AdminAgendamentoPaiStatusUpdateView.as_view(), name='admin-atualizar-status-agendamento-pai'),
-     # URL para o usuário marcar sua reserva como concluída (PUT/PATCH)
+    # URL para o usuário marcar sua reserva como concluída (PUT/PATCH)
     path('agendamentos/pai/<int:id_agendamento_pai>/status/', UserAgendamentoPaiStatusUpdateView.as_view(), name='user-atualizar-status-agendamento-pai'),
-     # URL para o usuário marcar um horário específico como concluído (PUT/PATCH)
+    # URL para o usuário marcar um horário específico como concluído (PUT/PATCH)
     path('agendamentos/<int:id_agendamento>/status/', UserAgendamentoStatusUpdateView.as_view(), name='user-atualizar-status-agendamento'),
+    # URL para verificar horários já agendados para um recurso (GET)
+    path('recursos/<int:recurso_id>/disponibilidade/', RecursoDisponibilidadeView.as_view(), name='recurso-disponibilidade'),
 ]

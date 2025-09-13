@@ -1,17 +1,19 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from user_profile.permissions import IsServidor, IsAdministrador
 from .models import Agendamento, AgendamentoPai
-from resource.models import Recurso
 from .serializers import AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer, AdminAgendamentoPaiSerializer
+from collections import defaultdict
+from datetime import datetime
 
 class ListarAgendamentosView(generics.ListAPIView):
     """
     Endpoint para o usuário listar suas solicitações de agendamento,
     agrupadas por AgendamentoPai
     """
-    serializer_class = AdminAgendamentoPaiSerializer # Reutiliza o serializer do adm
+    serializer_class = AdminAgendamentoPaiSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
@@ -73,14 +75,7 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
         
         instance.status_agendamento = novo_status
         instance.save()
-
-        # Se aprovado, marca o recurso como reservado
-        if novo_status == 'aprovado' and instance.agendamento_pai:
-            recurso = instance.agendamento_pai.id_recurso
-            recurso.status_recurso = 'reservado'
-            recurso.save()
         
-        # Se negado, atualiza todos os filhos do mesmo pai
         if novo_status == 'negado' and instance.agendamento_pai:
             instance.agendamento_pai.agendamentos_filhos.exclude(pk=instance.pk).update(status_agendamento='negado')
 
@@ -106,16 +101,7 @@ class AdminAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Atualiza todos os filhos de uma vez
         instance.agendamentos_filhos.update(status_agendamento=novo_status)
-
-        # Se aprovado, marca o recurso como reservado
-        if novo_status == 'aprovado':
-            recurso = instance.id_recurso
-            recurso.status_recurso = 'reservado'
-            recurso.save()
-
-        # Recarrega a instância para retornar os dados atualizados
         instance.refresh_from_db()
 
         return Response(self.get_serializer(instance).data)
@@ -129,7 +115,6 @@ class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
     lookup_field = 'id_agendamento_pai'
 
     def get_queryset(self):
-        # Garante que os usuários só possam modificar suas próprias reservas
         return AgendamentoPai.objects.filter(id_usuario=self.request.user)
 
     def update(self, request, *args, **kwargs):
@@ -142,18 +127,13 @@ class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Marca todos os agendamentos filhos como 'concluido'
         instance.agendamentos_filhos.update(status_agendamento=novo_status)
-
-        # Verifica se o recurso deve ser liberado
         recurso = instance.id_recurso
-        # Procura por outras reservas ativas ('aprovado') para este mesmo recurso
         outras_reservas_ativas = Agendamento.objects.filter(
             agendamento_pai__id_recurso=recurso,
             status_agendamento='aprovado'
         ).exists()
 
-        # Se não houver outras reservas ativas, o recurso volta a ficar disponível
         if not outras_reservas_ativas:
             recurso.status_recurso = 'disponivel'
             recurso.save()
@@ -165,12 +145,11 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
     """
     Endpoint para um usuário marcar um de seus próprios agendamentos como concluído
     """
-    serializer_class = AdminAgendamentoSerializer # Reutiliza um serializer simples
+    serializer_class = AdminAgendamentoSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id_agendamento'
 
     def get_queryset(self):
-        # Garante que o usuário só possa modificar seus próprios agendamentos
         return Agendamento.objects.filter(agendamento_pai__id_usuario=self.request.user)
 
     def update(self, request, *args, **kwargs):
@@ -183,11 +162,9 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Atualiza o status do agendamento filho
         instance.status_agendamento = novo_status
         instance.save()
         
-        # Lógica para liberar o recurso se necessário
         recurso = instance.agendamento_pai.id_recurso
         outras_reservas_ativas = Agendamento.objects.filter(
             agendamento_pai__id_recurso=recurso,
@@ -199,3 +176,37 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
             recurso.save()
 
         return Response(self.get_serializer(instance).data)
+
+class RecursoDisponibilidadeView(APIView):
+    """
+    Retorna os intervalos de horários já agendados e aprovados para um recurso
+    em um mês/ano específico.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, recurso_id):
+        try:
+            ano = int(request.query_params.get('ano'))
+            mes = int(request.query_params.get('mes'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Parâmetros "ano" e "mes" são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            agendamentos_aprovados = Agendamento.objects.filter(
+                agendamento_pai__id_recurso=recurso_id,
+                data_inicio__year=ano,
+                data_inicio__month=mes,
+                status_agendamento='aprovado'
+            ).values('data_inicio', 'hora_inicio', 'hora_fim')
+
+            booked_slots = defaultdict(list)
+            for agendamento in agendamentos_aprovados:
+                data_str = agendamento['data_inicio'].strftime('%Y-%m-%d')
+                booked_slots[data_str].append({
+                    'start': agendamento['hora_inicio'].strftime('%H:%M'),
+                    'end': agendamento['hora_fim'].strftime('%H:%M')
+                })
+
+            return Response(booked_slots)
+        except Exception as e:
+            return Response({'error': f'Ocorreu um erro interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
