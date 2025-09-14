@@ -2,16 +2,85 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.db.models import Q
+from django.db import transaction
 from user_profile.permissions import IsServidor, IsAdministrador
 from .models import Agendamento, AgendamentoPai
 from .serializers import (
-    AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer, 
-    AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer, 
+    AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer,
+    AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer,
     AdminAgendamentoPaiSerializer, AdminAgendamentoPaiUpdateSerializer
 )
 from collections import defaultdict
 from datetime import datetime
 from django.utils import timezone
+from notification.utils import criar_e_enviar_notificacao, notificar_admins, criar_notificacao_resumida_conflito
+
+def _verificar_e_negar_conflitos(agendamento_aprovado):
+    """
+    Função auxiliar para encontrar e negar agendamentos pendentes que conflitam
+    com um agendamento recém-aprovado
+    """
+    recurso = agendamento_aprovado.agendamento_pai.id_recurso
+    data_inicio = agendamento_aprovado.data_inicio
+    hora_inicio = agendamento_aprovado.hora_inicio
+    hora_fim = agendamento_aprovado.hora_fim
+
+    conflitos = Agendamento.objects.select_related('agendamento_pai', 'agendamento_pai__id_usuario').filter(
+        agendamento_pai__id_recurso=recurso,
+        data_inicio=data_inicio,
+        hora_inicio__lt=hora_fim,
+        hora_fim__gt=hora_inicio,
+        status_agendamento='pendente'
+    ).exclude(id_agendamento=agendamento_aprovado.id_agendamento)
+
+    if conflitos.exists():
+        conflitos_ids = list(conflitos.values_list('id_agendamento', flat=True))
+        Agendamento.objects.filter(id_agendamento__in=conflitos_ids).update(status_agendamento='negado')
+
+        for ag_conflitante in conflitos:
+            ag_pai_conflitante = ag_conflitante.agendamento_pai
+            mensagem = (f"Seu agendamento para '{recurso.nome_recurso}' no dia "
+                        f"{data_inicio.strftime('%d/%m/%Y')} foi negado devido a um conflito de horário.")
+            criar_e_enviar_notificacao(ag_pai_conflitante.id_usuario, ag_pai_conflitante, mensagem)
+
+def _negar_conflitos_em_massa(agendamentos_aprovados):
+    """
+    Encontra todos os conflitos para uma lista de agendamentos aprovados,
+    agrupa por usuário e envia uma única notificação de resumo
+    """
+    if not agendamentos_aprovados:
+        return
+
+    recurso = agendamentos_aprovados[0].agendamento_pai.id_recurso
+    
+    condicoes_conflito = Q()
+    for ag in agendamentos_aprovados:
+        condicoes_conflito |= Q(
+            data_inicio=ag.data_inicio,
+            hora_inicio__lt=ag.hora_fim,
+            hora_fim__gt=ag.hora_inicio
+        )
+
+    conflitos_qs = Agendamento.objects.select_related('agendamento_pai', 'agendamento_pai__id_usuario').filter(
+        condicoes_conflito,
+        agendamento_pai__id_recurso=recurso,
+        status_agendamento='pendente'
+    ).exclude(id_agendamento__in=[a.id_agendamento for a in agendamentos_aprovados])
+    
+    if not conflitos_qs.exists():
+        return
+
+    conflitos_agrupados = defaultdict(list)
+    for conflito in conflitos_qs:
+        conflitos_agrupados[conflito.agendamento_pai].append(conflito)
+
+    ids_para_negar = list(conflitos_qs.values_list('id_agendamento', flat=True))
+    Agendamento.objects.filter(id_agendamento__in=ids_para_negar).update(status_agendamento='negado')
+
+    for ag_pai, agendamentos_negados in conflitos_agrupados.items():
+        criar_notificacao_resumida_conflito(ag_pai.id_usuario, ag_pai, agendamentos_negados)
+
 
 class ListarAgendamentosView(generics.ListAPIView):
     """
@@ -26,31 +95,19 @@ class ListarAgendamentosView(generics.ListAPIView):
         user = self.request.user
         now = timezone.localtime()
 
-        agendamentos_aprovados_expirados = Agendamento.objects.filter(
+        agendamentos_aprovados_expirados_filter = Q(
             agendamento_pai__id_usuario=user,
-            status_agendamento='aprovado',
-            data_fim__lt=now.date()
-        )
-        agendamentos_aprovados_expirados_hoje = Agendamento.objects.filter(
-            agendamento_pai__id_usuario=user,
-            status_agendamento='aprovado',
-            data_fim=now.date(),
-            hora_fim__lt=now.time()
-        )
-        (agendamentos_aprovados_expirados | agendamentos_aprovados_expirados_hoje).update(status_agendamento='concluido')
+            status_agendamento='aprovado'
+        ) & (Q(data_fim__lt=now.date()) | Q(data_fim=now.date(), hora_fim__lt=now.time()))
         
-        agendamentos_pendentes_expirados = Agendamento.objects.filter(
+        Agendamento.objects.filter(agendamentos_aprovados_expirados_filter).update(status_agendamento='concluido')
+        
+        agendamentos_pendentes_expirados_filter = Q(
             agendamento_pai__id_usuario=user,
-            status_agendamento='pendente',
-            data_fim__lt=now.date()
-        )
-        agendamentos_pendentes_expirados_hoje = Agendamento.objects.filter(
-            agendamento_pai__id_usuario=user,
-            status_agendamento='pendente',
-            data_fim=now.date(),
-            hora_fim__lt=now.time()
-        )
-        (agendamentos_pendentes_expirados | agendamentos_pendentes_expirados_hoje).update(status_agendamento='negado')
+            status_agendamento='pendente'
+        ) & (Q(data_fim__lt=now.date()) | Q(data_fim=now.date(), hora_fim__lt=now.time()))
+        
+        Agendamento.objects.filter(agendamentos_pendentes_expirados_filter).update(status_agendamento='negado')
 
         return AgendamentoPai.objects.filter(id_usuario=user).prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
@@ -61,7 +118,9 @@ class CriarAgendamentoView(generics.CreateAPIView):
     permission_classes = [IsServidor | IsAdministrador]
 
     def perform_create(self, serializer):
-        serializer.save(id_usuario=self.request.user)
+        agendamento_pai = serializer.save(id_usuario=self.request.user)
+        mensagem = f"Nova solicitação de agendamento para o recurso '{agendamento_pai.id_recurso.nome_recurso}' por {self.request.user.nome}."
+        notificar_admins(agendamento_pai, mensagem)
 
 class AgendamentoPaiDetailView(generics.RetrieveAPIView):
     """
@@ -88,27 +147,15 @@ class AdminAgendamentoListView(generics.ListAPIView):
     def get_queryset(self):
         now = timezone.localtime()
 
-        agendamentos_aprovados_expirados = Agendamento.objects.filter(
-            status_agendamento='aprovado',
-            data_fim__lt=now.date()
+        agendamentos_aprovados_expirados_filter = Q(status_agendamento='aprovado') & (
+            Q(data_fim__lt=now.date()) | Q(data_fim=now.date(), hora_fim__lt=now.time())
         )
-        agendamentos_aprovados_expirados_hoje = Agendamento.objects.filter(
-            status_agendamento='aprovado',
-            data_fim=now.date(),
-            hora_fim__lt=now.time()
-        )
-        (agendamentos_aprovados_expirados | agendamentos_aprovados_expirados_hoje).update(status_agendamento='concluido')
+        Agendamento.objects.filter(agendamentos_aprovados_expirados_filter).update(status_agendamento='concluido')
         
-        agendamentos_pendentes_expirados = Agendamento.objects.filter(
-            status_agendamento='pendente',
-            data_fim__lt=now.date()
+        agendamentos_pendentes_expirados_filter = Q(status_agendamento='pendente') & (
+            Q(data_fim__lt=now.date()) | Q(data_fim=now.date(), hora_fim__lt=now.time())
         )
-        agendamentos_pendentes_expirados_hoje = Agendamento.objects.filter(
-            status_agendamento='pendente',
-            data_fim=now.date(),
-            hora_fim__lt=now.time()
-        )
-        (agendamentos_pendentes_expirados | agendamentos_pendentes_expirados_hoje).update(status_agendamento='negado')
+        Agendamento.objects.filter(agendamentos_pendentes_expirados_filter).update(status_agendamento='negado')
 
         return AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
@@ -129,12 +176,17 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
         if novo_status not in ['aprovado', 'negado']:
             return Response({"error": "Status inválido. Use 'aprovado' ou 'negado'."}, status=status.HTTP_400_BAD_REQUEST)
         
-        instance.status_agendamento = novo_status
-        instance.gerenciado_por = request.user
-        instance.save()
-        
-        if novo_status == 'negado' and instance.agendamento_pai:
-            instance.agendamento_pai.agendamentos_filhos.exclude(pk=instance.pk).update(status_agendamento='negado', gerenciado_por=request.user)
+        with transaction.atomic():
+            instance.status_agendamento = novo_status
+            instance.gerenciado_por = request.user
+            instance.save()
+            
+            agendamento_pai = instance.agendamento_pai
+            mensagem = f"O status do seu agendamento para '{agendamento_pai.id_recurso.nome_recurso}' no dia {instance.data_inicio.strftime('%d/%m/%Y')} foi atualizado para '{novo_status}'."
+            criar_e_enviar_notificacao(agendamento_pai.id_usuario, agendamento_pai, mensagem)
+
+            if novo_status == 'aprovado':
+                _negar_conflitos_em_massa([instance])
 
         return Response(self.get_serializer(instance).data)
 
@@ -165,8 +217,23 @@ class AdminAgendamentoPaiManageView(generics.RetrieveUpdateDestroyAPIView):
                     {"error": "Status inválido. Use 'aprovado' ou 'negado'."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
+            with transaction.atomic():
+                agendamentos_pendentes = instance.agendamentos_filhos.filter(status_agendamento='pendente')
+                agendamentos_para_atualizar = list(agendamentos_pendentes)
 
-            instance.agendamentos_filhos.update(status_agendamento=novo_status, gerenciado_por=request.user)
+                if agendamentos_para_atualizar:
+                    agendamentos_pendentes.update(
+                        status_agendamento=novo_status,
+                        gerenciado_por=request.user
+                    )
+                    
+                    if novo_status == 'aprovado':
+                        _negar_conflitos_em_massa(agendamentos_para_atualizar)
+                    
+                    mensagem = f"Todos os horários pendentes da sua solicitação para '{instance.id_recurso.nome_recurso}' foram atualizados para '{novo_status}'."
+                    criar_e_enviar_notificacao(instance.id_usuario, instance, mensagem)
+
             instance.refresh_from_db()
             serializer = AdminAgendamentoPaiSerializer(instance)
             return Response(serializer.data)

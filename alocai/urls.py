@@ -32,6 +32,7 @@ urlpatterns = [
     path('health_check', health_check, name='health_check'),
     path('api/', include('booking.urls')),
     path('api/', include('user_profile.urls')),
+    path('api/', include('notification.urls')),
 
     # URL pública para o dashboard (visão de lista)
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
