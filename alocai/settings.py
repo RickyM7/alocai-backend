@@ -37,7 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY') 
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # DEBUG=1 no .env para desenvolvimento
@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'resource',
     'booking',
     'user_profile',
+    'notification',
 ]
 
 MIDDLEWARE = [
@@ -168,21 +169,21 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Permitir subdomínios ou padrões mais complexos:
 # CORS_ALLOWED_ORIGIN_REGEXES = [
-#     r"^https://\w+\.seu-dominio-frontend\.com$",
+# r"^https://\w+\.seu-dominio-frontend\.com$",
 # ]
 
 # Debug de produção
 # LOGGING = {
-#     "version": 1,
-#     "disable_existing_loggers": False,
-#     "handlers": {
-#         "console": {
-#             "class": "logging.StreamHandler",
+# "version": 1,
+# "disable_existing_loggers": False,
+# "handlers": {
+# "console": {
+# "class": "logging.StreamHandler",
 #         },
 #     },
-#     "root": {
-#         "handlers": ["console"],
-#         "level": "INFO",
+# "root": {
+# "handlers": ["console"],
+# "level": "INFO",
 #     },
 # }
 
@@ -207,3 +208,11 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'login.Usuario'
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
