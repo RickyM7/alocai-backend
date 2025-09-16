@@ -109,7 +109,7 @@ class ListarAgendamentosView(generics.ListAPIView):
         
         Agendamento.objects.filter(agendamentos_pendentes_expirados_filter).update(status_agendamento='negado')
 
-        return AgendamentoPai.objects.filter(id_usuario=user).prefetch_related('agendamentos_filhos').order_by('-data_criacao')
+        return AgendamentoPai.objects.filter(id_usuario=user).select_related('id_recurso', 'id_usuario', 'id_responsavel').prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
 class CriarAgendamentoView(generics.CreateAPIView):
     queryset = AgendamentoPai.objects.all()
@@ -157,7 +157,7 @@ class AdminAgendamentoListView(generics.ListAPIView):
         )
         Agendamento.objects.filter(agendamentos_pendentes_expirados_filter).update(status_agendamento='negado')
 
-        return AgendamentoPai.objects.prefetch_related('agendamentos_filhos').order_by('-data_criacao')
+        return AgendamentoPai.objects.select_related('id_recurso', 'id_usuario').prefetch_related('agendamentos_filhos').order_by('-data_criacao')
 
 class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
     """
@@ -177,6 +177,22 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
             return Response({"error": "Status inválido. Use 'aprovado' ou 'negado'."}, status=status.HTTP_400_BAD_REQUEST)
         
         with transaction.atomic():
+            if novo_status == 'aprovado':
+                ag_pai = instance.agendamento_pai
+                conflitos = Agendamento.objects.filter(
+                    agendamento_pai__id_recurso=ag_pai.id_recurso,
+                    data_inicio=instance.data_inicio,
+                    hora_inicio__lt=instance.hora_fim,
+                    hora_fim__gt=instance.hora_inicio,
+                    status_agendamento='aprovado'
+                ).exclude(id_agendamento=instance.id_agendamento)
+                
+                if conflitos.exists():
+                    return Response(
+                        {"error": "Este horário já foi aprovado para outro agendamento."},
+                        status=status.HTTP_409_CONFLICT
+                    )
+
             instance.status_agendamento = novo_status
             instance.gerenciado_por = request.user
             instance.save()
