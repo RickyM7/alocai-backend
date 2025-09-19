@@ -173,8 +173,8 @@ class AdminAgendamentoStatusUpdateView(generics.UpdateAPIView):
         instance = self.get_object()
         novo_status = request.data.get("status_agendamento")
 
-        if novo_status not in ['aprovado', 'negado']:
-            return Response({"error": "Status inválido. Use 'aprovado' ou 'negado'."}, status=status.HTTP_400_BAD_REQUEST)
+        if novo_status not in ['aprovado', 'negado', 'cancelado']:
+            return Response({"error": "Status inválido. Use 'aprovado', 'negado' ou 'cancelado'."}, status=status.HTTP_400_BAD_REQUEST)
         
         with transaction.atomic():
             if novo_status == 'aprovado':
@@ -258,7 +258,7 @@ class AdminAgendamentoPaiManageView(generics.RetrieveUpdateDestroyAPIView):
 
 class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
     """
-    Endpoint para um usuário marcar sua própria reserva como concluída
+    Endpoint para um usuário marcar sua própria reserva como concluída ou cancelada
     """
     serializer_class = AgendamentoPaiDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -271,26 +271,31 @@ class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
         instance = self.get_object()
         novo_status = request.data.get("status_agendamento")
 
-        if novo_status != 'concluido':
-            return Response({"error": "Status inválido. Apenas 'concluido' é permitido por esta rota."}, status=status.HTTP_400_BAD_REQUEST)
+        if novo_status not in ['concluido', 'cancelado']:
+            return Response({"error": "Status inválido. Apenas 'concluido' ou 'cancelado' é permitido por esta rota."}, status=status.HTTP_400_BAD_REQUEST)
 
-        instance.agendamentos_filhos.update(status_agendamento=novo_status)
-        recurso = instance.id_recurso
-        outras_reservas_ativas = Agendamento.objects.filter(
-            agendamento_pai__id_recurso=recurso,
-            status_agendamento='aprovado'
-        ).exists()
+        # Apenas horários aprovados ou pendentes podem ser alterados para concluído/cancelado
+        status_para_alterar = ['aprovado', 'pendente']
+        instance.agendamentos_filhos.filter(status_agendamento__in=status_para_alterar).update(status_agendamento=novo_status)
 
-        if not outras_reservas_ativas:
-            recurso.status_recurso = 'disponivel'
-            recurso.save()
+        # Se cancelou, verifica se o recurso pode voltar a ficar disponível
+        if novo_status == 'cancelado':
+            recurso = instance.id_recurso
+            outras_reservas_ativas = Agendamento.objects.filter(
+                agendamento_pai__id_recurso=recurso,
+                status_agendamento='aprovado'
+            ).exists()
+
+            if not outras_reservas_ativas:
+                recurso.status_recurso = 'disponivel'
+                recurso.save()
 
         instance.refresh_from_db()
         return Response(self.get_serializer(instance).data)
 
 class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
     """
-    Endpoint para um usuário marcar um de seus próprios agendamentos como concluído
+    Endpoint para um usuário marcar um de seus próprios agendamentos como concluído ou cancelado
     """
     serializer_class = AdminAgendamentoSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -303,21 +308,26 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
         instance = self.get_object()
         novo_status = request.data.get("status_agendamento")
 
-        if novo_status != 'concluido':
-            return Response({"error": "Ação não permitida. Apenas 'concluido' é válido."}, status=status.HTTP_400_BAD_REQUEST)
+        if novo_status not in ['concluido', 'cancelado']:
+            return Response({"error": "Ação não permitida. Apenas 'concluido' ou 'cancelado' é válido."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Apenas agendamentos aprovados ou pendentes podem ser alterados
+        if instance.status_agendamento not in ['aprovado', 'pendente']:
+             return Response({"error": f"Ação não permitida para agendamentos com status '{instance.status_agendamento}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         instance.status_agendamento = novo_status
         instance.save()
         
-        recurso = instance.agendamento_pai.id_recurso
-        outras_reservas_ativas = Agendamento.objects.filter(
-            agendamento_pai__id_recurso=recurso,
-            status_agendamento='aprovado'
-        ).exists()
+        if novo_status == 'cancelado':
+            recurso = instance.agendamento_pai.id_recurso
+            outras_reservas_ativas = Agendamento.objects.filter(
+                agendamento_pai__id_recurso=recurso,
+                status_agendamento='aprovado'
+            ).exists()
 
-        if not outras_reservas_ativas:
-            recurso.status_recurso = 'disponivel'
-            recurso.save()
+            if not outras_reservas_ativas:
+                recurso.status_recurso = 'disponivel'
+                recurso.save()
 
         return Response(self.get_serializer(instance).data)
 
