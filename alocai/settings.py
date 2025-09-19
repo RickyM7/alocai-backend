@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 import os
+import sys
 import dj_database_url
 from dotenv import load_dotenv
 from pathlib import Path
@@ -154,6 +155,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Configuração para o Whitenoise encontrar e servir os arquivos de forma eficiente
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Configurações para testes
+if 'test' in sys.argv or 'test_coverage' in sys.argv:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:'
+    }
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
+    MIDDLEWARE.remove('whitenoise.middleware.WhiteNoiseMiddleware')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
