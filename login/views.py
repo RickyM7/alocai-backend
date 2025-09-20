@@ -12,6 +12,9 @@ from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 from django.contrib.auth import authenticate
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from django.conf import settings
 
 from .models import Usuario
 from user_profile.models import PerfilAcesso
@@ -86,7 +89,14 @@ class GoogleSignInAPIView(APIView):
             'user_data': user_data
         }, status=200)
 
-        response.set_cookie(key='refresh_token', value=str(refresh), httponly=True, secure=True, samesite='Lax', path='/')
+        response.set_cookie(
+            key='refresh_token', 
+            value=str(refresh), 
+            httponly=True, 
+            secure=True,
+            samesite='None', 
+            path='/'
+        )
         return response
 
 class GoogleSignOutAPIView(APIView):
@@ -97,6 +107,33 @@ class GoogleSignOutAPIView(APIView):
 
     def post(self, request):
         return Response({"detail": "User logged out successfully'"}, status=200)
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """
+    Endpoint para renovar o token de acesso.
+    """
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if not refresh_token:
+            return Response({'error': 'Refresh token not found in cookie'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        request.data['refresh'] = refresh_token
+        
+        try:
+            response = super().post(request, *args, **kwargs)
+            if 'refresh' in response.data:
+                new_refresh_token = response.data['refresh']
+                response.set_cookie(
+                    key='refresh_token', 
+                    value=new_refresh_token, 
+                    httponly=True, 
+                    secure=True,
+                    samesite='None',
+                    path='/'
+                )
+            return response
+        except (InvalidToken, TokenError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
 class LinkGoogleAccountView(APIView):
     """
@@ -163,7 +200,7 @@ class AdminLoginView(APIView):
                 user.ultimo_login = timezone.now()
                 user.save()
                 refresh = RefreshToken.for_user(user)
-                return Response({
+                response = Response({
                     'access': str(refresh.access_token),
                     'user_data': {
                         'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
@@ -173,6 +210,15 @@ class AdminLoginView(APIView):
                         'tem_senha': user.has_usable_password()
                     }
                 })
+                response.set_cookie(
+                    key='refresh_token', 
+                    value=str(refresh), 
+                    httponly=True, 
+                    secure=True,
+                    samesite='None', 
+                    path='/'
+                )
+                return response
             else:
                 return Response({'error': 'Acesso negado. Esta área é restrita para administradores.'}, status=status.HTTP_403_FORBIDDEN)
         else:

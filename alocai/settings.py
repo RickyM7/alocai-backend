@@ -175,6 +175,10 @@ CORS_ALLOWED_ORIGINS = [
     "https://alocai-front.onrender.com"
 ]
 CORS_ALLOW_CREDENTIALS = True
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 
 # Permitir subdomínios ou padrões mais complexos:
 # CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -203,8 +207,6 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     "USER_ID_FIELD": "id_usuario",
     "USER_ID_CLAIM": "user_id",
-    'REFRESH_TOKEN_COOKIE_SAMESITE': 'None',
-    'REFRESH_TOKEN_COOKIE_SECURE': True,
 }
 
 REST_FRAMEWORK = {

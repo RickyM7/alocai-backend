@@ -16,18 +16,15 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from login.views import health_check
+from login.views import health_check, CookieTokenRefreshView
 from resource.views import RecursoListView, DashboardView, CalendarAgendamentosView
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 urlpatterns = [
     # Admin do Django
     path('django-admin/', admin.site.urls),
     
-    # Nossas URLs de API
+    # URLs de API
     path('', include('login.urls')),
     path('health_check', health_check, name='health_check'),
     path('api/', include('booking.urls')),
@@ -48,5 +45,5 @@ urlpatterns = [
     
     # Autenticação JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
 ]
