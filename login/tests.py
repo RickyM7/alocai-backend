@@ -1,4 +1,7 @@
+import time
+from datetime import timedelta
 from django.urls import reverse
+from django.test import override_settings
 from rest_framework import status
 from unittest.mock import patch
 from .models import Usuario
@@ -125,3 +128,33 @@ class LoginAPITestCase(BaseTestCase):
         self.assertEqual(self.admin_user.id, self.admin_user.id_usuario)
         self.assertEqual(self.admin_user.pk, self.admin_user.id_usuario)
         self.assertTrue(self.admin_user.is_authenticated)
+
+    def testar_fluxo_de_refresh_token(self):
+        login_url = reverse('admin_login')
+        data = {'email': self.admin_user.email, 'password': 'password123'}
+        response = self.client.post(login_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        access_token = response.data['access']
+        refresh_token = response.cookies['refresh_token'].value
+
+        protected_url = reverse('admin_user_list')
+        
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer token_invalido')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        refresh_url = reverse('token_refresh')
+        self.client.credentials()
+        self.client.cookies['refresh_token'] = refresh_token
+        response = self.client.post(refresh_url, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_access_token = response.data['access']
+        self.assertNotEqual(access_token, new_access_token)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {new_access_token}')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
