@@ -23,6 +23,7 @@ class Migration(migrations.Migration):
                 ('id_usuario', models.AutoField(primary_key=True, serialize=False)),
                 ('nome', models.CharField(max_length=255)),
                 ('email', models.EmailField(max_length=255, unique=True)),
+                ('email_admin', models.EmailField(blank=True, db_index=True, max_length=255, null=True, unique=True)),
                 ('foto_perfil', models.URLField(blank=True, max_length=255, null=True)),
                 ('numero_matricula', models.CharField(blank=True, max_length=100, null=True)),
                 ('telefone', models.CharField(blank=True, max_length=20, null=True)),

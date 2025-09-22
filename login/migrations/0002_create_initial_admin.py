@@ -18,10 +18,10 @@ def create_admin_user(apps, schema_editor):
     try:
         admin_profile = PerfilAcesso.objects.get(nome_perfil='Administrador')
 
-        # Cria ou atualiza o usuário administrador
         user, created = Usuario.objects.get_or_create(
-            email=admin_email,
+            email_admin=admin_email,
             defaults={
+                'email': admin_email,
                 'nome': 'Administrador do Sistema',
                 'password': make_password(admin_password),
                 'id_perfil': admin_profile,
@@ -30,28 +30,23 @@ def create_admin_user(apps, schema_editor):
             }
         )
 
-        if not created:
-            # Se o usuário já existia, garante que os dados estão corretos
-            user.id_perfil = admin_profile
-            user.is_staff = True
-            user.is_superuser = True
-            user.set_password(admin_password)
-            user.save()
-            print(f"Usuário admin '{admin_email}' já existia e foi atualizado.")
-        else:
+        if created:
             print(f"Usuário admin '{admin_email}' criado com sucesso.")
+        else:
+            print(f"Usuário admin com email de referência '{admin_email}' já existe. Nenhuma ação foi tomada.")
 
     except PerfilAcesso.DoesNotExist:
         print("ERRO: Perfil 'Administrador' não encontrado. Não foi possível criar o superusuário.")
     except Exception as e:
-        print(f"Ocorreu um erro ao tentar criar ou atualizar o usuário admin: {e}")
+        print(f"Ocorreu um erro ao tentar criar o usuário admin: {e}")
 
 
 def remove_admin_user(apps, schema_editor):
     Usuario = apps.get_model('login', 'Usuario')
     admin_email = os.environ.get('ADMIN_EMAIL')
     if admin_email:
-        Usuario.objects.filter(email=admin_email, id_perfil__nome_perfil='Administrador').delete()
+        Usuario.objects.filter(email_admin=admin_email, id_perfil__nome_perfil='Administrador').delete()
+        print(f"Usuário admin com email de referência '{admin_email}' removido.")
 
 
 class Migration(migrations.Migration):
