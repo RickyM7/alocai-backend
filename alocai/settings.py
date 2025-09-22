@@ -48,7 +48,8 @@ DEBUG = os.environ.get('DEBUG', '0') == '1'
 if not SECRET_KEY and DEBUG:
     SECRET_KEY = 'django-insecure-kcu91q3x4)+4s0g!^-@6^!av+*4=6n@1!o=3o(dd+h&8v1w4id'
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost 127.0.0.1').split(' ')
+# ALLOWED_HOSTS Configuration
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -169,15 +170,33 @@ if 'test' in sys.argv or 'test_coverage' in sys.argv:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# CORS Configuration
 CORS_ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://alocai-front.onrender.com"
 ]
 
+def normalize_cors_origin(origin):
+    origin = origin.strip()
+    if not origin:
+        return None
+    
+    if origin.startswith(('http://', 'https://')):
+        return origin
+    
+    if origin.startswith(('localhost', '127.0.0.1')):
+        return f'http://{origin}'
+    
+    return f'https://{origin}'
+
 cors_extra_origins = os.environ.get('CORS_EXTRA_ORIGINS', '')
 if cors_extra_origins:
-    extra_origins = [origin.strip() for origin in cors_extra_origins.split(',') if origin.strip()]
+    extra_origins = []
+    for origin in cors_extra_origins.split(','):
+        normalized = normalize_cors_origin(origin)
+        if normalized:
+            extra_origins.append(normalized)
     CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_DEFAULT + extra_origins
 else:
     CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_DEFAULT
@@ -187,6 +206,9 @@ SESSION_COOKIE_SAMESITE = 'None'
 CSRF_COOKIE_SAMESITE = 'None'
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+
+# CSRF Trusted Origins - sincroniza automaticamente com CORS
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
 
 # Permitir subdomínios ou padrões mais complexos:
 # CORS_ALLOWED_ORIGIN_REGEXES = [
