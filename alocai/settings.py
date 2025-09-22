@@ -64,11 +64,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
-    'login',
-    'resource',
-    'booking',
-    'user_profile',
-    'notification',
+    'login.apps.LoginConfig',
+    'resource.apps.ResourceConfig',
+    'booking.apps.BookingConfig',
+    'user_profile.apps.UserProfileConfig',
+    'notification.apps.NotificationConfig',
 ]
 
 MIDDLEWARE = [
