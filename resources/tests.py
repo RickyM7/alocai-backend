@@ -3,7 +3,7 @@ from rest_framework import status
 from .models import Recurso
 from alocai.test_base import BaseTestCase
 
-class ResourceAPITestCase(BaseTestCase):
+class ResourcesAPITestCase(BaseTestCase):
 
     def setUp(self):
         self.recurso1 = Recurso.objects.create(nome_recurso="Laboratório A", status_recurso="disponivel")

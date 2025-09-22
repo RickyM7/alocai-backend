@@ -65,7 +65,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'login.apps.LoginConfig',
-    'resource.apps.ResourceConfig',
+    'resources.apps.ResourcesConfig',
     'booking.apps.BookingConfig',
     'user_profile.apps.UserProfileConfig',
     'notification.apps.NotificationConfig',

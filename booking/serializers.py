@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Agendamento, AgendamentoPai
-from resource.models import Recurso
+from resources.models import Recurso
 from login.models import Usuario
 
 class AgendamentoFilhoSerializer(serializers.ModelSerializer):

@@ -1,7 +1,7 @@
 from rest_framework.test import APITestCase
 from login.models import Usuario
 from user_profile.models import PerfilAcesso
-from resource.models import Recurso
+from resources.models import Recurso
 from booking.models import Agendamento, AgendamentoPai
 from notification.models import Notificacao
 

@@ -34,7 +34,7 @@ Este repositório está organizado com:
 - `booking/` – App de agendamentos (CRUD de solicitações, aprovação e status)
 - `login/` – App de autenticação (Google OAuth, JWT, administração)
 - `notification/` – App de notificações (listar e marcar como lidas)
-- `resource/` – App de recursos (laboratórios e administração dos recursos)
+- `resources/` – App de recursos (laboratórios e administração dos recursos)
 - `user_profile/` – Perfis de acesso e visibilidade
 - `requirements.txt` – Dependências do projeto
 - `manage.py` – Comando principal para execução
@@ -109,7 +109,7 @@ Base URL local: `http://localhost:8000`
   - `PATCH /api/agendamentos/<id_agendamento>/status/`
   - `GET /api/recursos/<recurso_id>/disponibilidade/`
 
-- Recursos – `resource/urls.py` (prefixo `api/admin/` para rotas administrativas):
+- Recursos – `resources/urls.py` (prefixo `api/admin/` para rotas administrativas):
   - `GET|POST /api/admin/recursos/`
   - `GET|PUT|PATCH|DELETE /api/admin/recursos/<id>/`
   - `GET /api/admin/recursos/<id_recurso>/agendamentos/`

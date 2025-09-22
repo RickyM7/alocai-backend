@@ -2,7 +2,7 @@ from django.urls import reverse
 from rest_framework import status
 from unittest.mock import patch
 from login.models import Usuario
-from resource.models import Recurso
+from resources.models import Recurso
 from .models import Agendamento, AgendamentoPai
 from datetime import date, time
 from alocai.test_base import BaseTestCase

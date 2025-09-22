@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from login.views import health_check, CookieTokenRefreshView
-from resource.views import RecursoListView, DashboardView, CalendarAgendamentosView
+from resources.views import RecursoListView, DashboardView, CalendarAgendamentosView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 urlpatterns = [
@@ -41,7 +41,7 @@ urlpatterns = [
     path('api/recursos/', RecursoListView.as_view(), name='listar-recursos'),
     
     # Rotas administrativas para gerenciamento de recursos
-    path('api/admin/', include('resource.urls')),
+    path('api/admin/', include('resources.urls')),
     
     # Autenticação JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
