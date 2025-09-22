@@ -169,11 +169,19 @@ if 'test' in sys.argv or 'test_coverage' in sys.argv:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://alocai-front.onrender.com"
 ]
+
+cors_extra_origins = os.environ.get('CORS_EXTRA_ORIGINS', '')
+if cors_extra_origins:
+    extra_origins = [origin.strip() for origin in cors_extra_origins.split(',') if origin.strip()]
+    CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_DEFAULT + extra_origins
+else:
+    CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_DEFAULT
+
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_SAMESITE = 'None'
 CSRF_COOKIE_SAMESITE = 'None'
