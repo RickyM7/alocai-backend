@@ -1,84 +1,160 @@
-from django.test import TestCase, Client
-from django.contrib.auth.models import User
-from login.models import Usuario
+import time
+from datetime import timedelta
+from django.urls import reverse
+from django.test import override_settings
+from rest_framework import status
 from unittest.mock import patch
+from .models import Usuario
+from alocai.test_base import BaseTestCase
 
-class GoogleSignInTest(TestCase):
+class LoginAPITestCase(BaseTestCase):
 
     @patch('login.views.id_token.verify_oauth2_token')
-    def test_first_login_creates_user_and_usuario(self, mock_verify_google_token):
-        """
-        Verifica se o primeiro login cria um registro em auth_user e em usuario.
-        """
-        #Simula a resposta que o Google enviaria após validar o token
-        mock_google_user_data = {
-            'email': 'novo.usuario@teste.com',
+    def testar_login_google_novo_usuario(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'novo.usuario@google.com',
             'given_name': 'Novo',
             'family_name': 'Usuario',
-            'email_verified': True
+            'sub': 'google-id-123'
         }
-        mock_verify_google_token.return_value = mock_google_user_data
-
-        #Simula a requisição POST que o frontend faria
-        client = Client()
-        response = client.post('/api/google-sign-in/', {
-            'credential': 'um-token-falso-que-sera-ignorado-pelo-mock'
-        }, content_type='application/json')
-
-        #A requisição foi bem-sucedida?
-        self.assertEqual(response.status_code, 200)
-
-        usuario_exists = Usuario.objects.filter(email='novo.usuario@teste.com').exists()
-        self.assertTrue(usuario_exists)
-
-        #Se chamarmos de novo, não deve criar outro usuário
-        Usuario.objects.all().delete()
+        url = reverse('google_sign_in')
+        response = self.client.post(url, {'credential': 'test_token'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertTrue(Usuario.objects.filter(email='novo.usuario@google.com').exists())
 
     @patch('login.views.id_token.verify_oauth2_token')
-    def test_login_google(self, mock_verify):
-        # Simula um token válido
+    def testar_login_google_usuario_existente(self, mock_verify):
         mock_verify.return_value = {
-            'email': 'test@example.com',
-            'given_name': 'Test',
-            'family_name': 'User'
+            'email': 'servidor@teste.com',
+            'given_name': 'Servidor',
+            'family_name': 'User',
+            'sub': 'google-id-456'
         }
-        response = self.client.post('/api/google-sign-in/', {
-            'credential': 'valid_token_example'
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('access', response.data)  # Se você retorna JWT
+        url = reverse('google_sign_in')
+        response = self.client.post(url, {'credential': 'test_token'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        user = Usuario.objects.get(email='servidor@teste.com')
+        self.assertEqual(user.google_id, 'google-id-456')
 
-    def test_login_google_invalid_token(self):
-        response = self.client.post('/api/google-sign-in/', {
-            'credential': 'invalid_token'
-        })
-        self.assertEqual(response.status_code, 403)
+    @patch('login.views.id_token.verify_oauth2_token', side_effect=ValueError)
+    def testar_login_google_token_invalido(self, mock_verify):
+        url = reverse('google_sign_in')
+        response = self.client.post(url, {'credential': 'invalid_token'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    @patch('login.views.id_token.verify_oauth2_token')
-    def test_login_user_already_exists(self, mock_verify):
-        # Cria um usuário antes de testar o login
-        Usuario.objects.create(
-            email='test@example.com',
-            nome='Test User',
-            data_criacao_conta='2023-01-01T00:00:00Z',
-        )
-
-        mock_verify.return_value = {
-            'email': 'test@example.com',
-            'given_name': 'Test',
-            'family_name': 'User'
-        }
-
-        response = self.client.post('/api/google-sign-in/', {
-            'credential': 'valid_token_example'
-        })
-        self.assertEqual(response.status_code, 200)
+    def testar_login_admin_sucesso(self):
+        url = reverse('admin_login')
+        data = {'email': 'admin@teste.com', 'password': 'password123'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
 
-        # Verifica se a data de ultimo login foi atualizada
-        usuario = Usuario.objects.get(email='test@example.com')
-        usuario_exists = usuario.ultimo_login is not None
-        self.assertTrue(usuario_exists)
+    def testar_login_admin_falha_nao_admin(self):
+        url = reverse('admin_login')
+        data = {'email': 'servidor@teste.com', 'password': 'password123'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_logout_google(self):
-        pass
+    def testar_permissao_lista_usuarios(self):
+        url = reverse('admin_user_list')
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.client.force_authenticate(user=self.server_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def testar_permissoes_atualizacao_perfil_usuario(self):
+        outro_user = Usuario.objects.create_user(email='outro@teste.com', nome='Outro', password='pw')
+        url = reverse('user_api_view', kwargs={'id_usuario': outro_user.id_usuario})
+        data = {'id_perfil': self.server_profile.id_perfil}
+        
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.put(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        outro_user.refresh_from_db()
+        self.assertEqual(outro_user.id_perfil, self.server_profile)
+        
+        self.client.force_authenticate(user=self.server_user)
+        response = self.client.put(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
+        admin_url = reverse('user_api_view', kwargs={'id_usuario': self.admin_user.id_usuario})
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.put(admin_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def testar_admin_pode_deletar_usuario(self):
+        user_to_delete = Usuario.objects.create(email='delete@me.com', nome='Delete Me')
+        url = reverse('user_api_view', kwargs={'id_usuario': user_to_delete.id_usuario})
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Usuario.objects.filter(email='delete@me.com').exists())
+
+    def testar_admin_nao_pode_deletar_a_si_mesmo(self):
+        url = reverse('user_api_view', kwargs={'id_usuario': self.admin_user.id_usuario})
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch('login.views.id_token.verify_oauth2_token')
+    def testar_vincular_conta_google(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'admin.google@teste.com',
+            'given_name': 'Admin',
+            'family_name': 'Google',
+            'sub': 'google-admin-123'
+        }
+        url = reverse('admin_link_google')
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(url, {'credential': 'test_token'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.admin_user.refresh_from_db()
+        self.assertEqual(self.admin_user.google_id, 'google-admin-123')
+        self.assertEqual(self.admin_user.email, 'admin.google@teste.com')
+
+    def testar_mudanca_de_senha(self):
+        url = reverse('admin_change_password')
+        data = {'new_password': 'new_password123'}
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.admin_user.refresh_from_db()
+        self.assertTrue(self.admin_user.check_password('new_password123'))
+        
+    def testar_propriedades_customizadas_model_usuario(self):
+        self.assertEqual(self.admin_user.id, self.admin_user.id_usuario)
+        self.assertEqual(self.admin_user.pk, self.admin_user.id_usuario)
+        self.assertTrue(self.admin_user.is_authenticated)
+
+    def testar_fluxo_de_refresh_token(self):
+        login_url = reverse('admin_login')
+        data = {'email': self.admin_user.email, 'password': 'password123'}
+        response = self.client.post(login_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        access_token = response.data['access']
+        refresh_token = response.cookies['refresh_token'].value
+
+        protected_url = reverse('admin_user_list')
+        
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer token_invalido')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        refresh_url = reverse('token_refresh')
+        self.client.credentials()
+        self.client.cookies['refresh_token'] = refresh_token
+        response = self.client.post(refresh_url, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_access_token = response.data['access']
+        self.assertNotEqual(access_token, new_access_token)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {new_access_token}')
+        response = self.client.get(protected_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

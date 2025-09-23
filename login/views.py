@@ -12,6 +12,9 @@ from django.http import JsonResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 from django.contrib.auth import authenticate
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from django.conf import settings
 
 from .models import Usuario
 from user_profile.models import PerfilAcesso
@@ -68,18 +71,32 @@ class GoogleSignInAPIView(APIView):
             )
 
         refresh = RefreshToken.for_user(user)
+
+        # Prepara os dados do usuário para a resposta
+        user_data = {
+            'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
+            'foto_perfil': user.foto_perfil, 'data_criacao_conta': user.data_criacao_conta,
+            'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None,
+            'nome_perfil': user.id_perfil.nome_perfil if user.id_perfil else None,
+            'google_id': user.google_id
+        }
+        # Adiciona o campo tem_senha se o usuário for admin
+        if user.id_perfil and user.id_perfil.nome_perfil == 'Administrador':
+            user_data['tem_senha'] = user.has_usable_password()
+
         response = Response({
             'access': str(refresh.access_token),
-            'user_data': {
-                'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
-                'foto_perfil': user.foto_perfil, 'data_criacao_conta': user.data_criacao_conta,
-                'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None,
-                'nome_perfil': user.id_perfil.nome_perfil if user.id_perfil else None,
-                'google_id': user.google_id
-            }
+            'user_data': user_data
         }, status=200)
 
-        response.set_cookie(key='refresh_token', value=str(refresh), httponly=True, secure=True, samesite='Lax', path='/')
+        response.set_cookie(
+            key='refresh_token', 
+            value=str(refresh), 
+            httponly=True, 
+            secure=True,
+            samesite='None', 
+            path='/'
+        )
         return response
 
 class GoogleSignOutAPIView(APIView):
@@ -90,6 +107,33 @@ class GoogleSignOutAPIView(APIView):
 
     def post(self, request):
         return Response({"detail": "User logged out successfully'"}, status=200)
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """
+    Endpoint para renovar o token de acesso.
+    """
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if not refresh_token:
+            return Response({'error': 'Refresh token not found in cookie'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        request.data['refresh'] = refresh_token
+        
+        try:
+            response = super().post(request, *args, **kwargs)
+            if 'refresh' in response.data:
+                new_refresh_token = response.data['refresh']
+                response.set_cookie(
+                    key='refresh_token', 
+                    value=new_refresh_token, 
+                    httponly=True, 
+                    secure=True,
+                    samesite='None',
+                    path='/'
+                )
+            return response
+        except (InvalidToken, TokenError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
 class LinkGoogleAccountView(APIView):
     """
@@ -127,7 +171,8 @@ class LinkGoogleAccountView(APIView):
                 'foto_perfil': admin_user.foto_perfil, 'data_criacao_conta': admin_user.data_criacao_conta.isoformat(),
                 'id_perfil': admin_user.id_perfil.id_perfil if admin_user.id_perfil else None,
                 'nome_perfil': admin_user.id_perfil.nome_perfil if admin_user.id_perfil else None,
-                'google_id': admin_user.google_id
+                'google_id': admin_user.google_id,
+                'tem_senha': admin_user.has_usable_password()
             }
             return Response({
                 'detail': 'Conta Google vinculada e dados atualizados com sucesso.',
@@ -155,15 +200,25 @@ class AdminLoginView(APIView):
                 user.ultimo_login = timezone.now()
                 user.save()
                 refresh = RefreshToken.for_user(user)
-                return Response({
+                response = Response({
                     'access': str(refresh.access_token),
                     'user_data': {
                         'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
                         'foto_perfil': user.foto_perfil, 'data_criacao_conta': user.data_criacao_conta,
                         'id_perfil': user.id_perfil.id_perfil, 'nome_perfil': user.id_perfil.nome_perfil,
-                        'google_id': user.google_id
+                        'google_id': user.google_id,
+                        'tem_senha': user.has_usable_password()
                     }
                 })
+                response.set_cookie(
+                    key='refresh_token', 
+                    value=str(refresh), 
+                    httponly=True, 
+                    secure=True,
+                    samesite='None', 
+                    path='/'
+                )
+                return response
             else:
                 return Response({'error': 'Acesso negado. Esta área é restrita para administradores.'}, status=status.HTTP_403_FORBIDDEN)
         else:
@@ -218,6 +273,10 @@ class UserAPIView(APIView):
                     {"error": "Administradores não podem remover o próprio privilégio."},
                     status=status.HTTP_403_FORBIDDEN
                 )
+            
+            # Se o usuário é rebaixado de admin, invalida a senha
+            if user_a_ser_editado.id_perfil and user_a_ser_editado.id_perfil.nome_perfil == 'Administrador' and perfil_novo.nome_perfil != 'Administrador':
+                user_a_ser_editado.set_unusable_password()
 
             user_a_ser_editado.id_perfil = perfil_novo
             user_a_ser_editado.save()

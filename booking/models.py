@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-from resource.models import Recurso
+from resources.models import Recurso
 
 class AgendamentoPai(models.Model):
     id_agendamento_pai = models.AutoField(primary_key=True)
