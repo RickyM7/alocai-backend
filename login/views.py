@@ -1,11 +1,12 @@
-import os
-from dotenv import load_dotenv
+import logging
 
 from django.utils import timezone
+from django.db import connection
 from rest_framework.views import APIView
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import AnonRateThrottle
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.http import JsonResponse
@@ -21,13 +22,48 @@ from user_profile.models import PerfilAcesso
 from user_profile.permissions import IsAdministrador
 from .serializers import UserAdminSerializer
 
-load_dotenv()
+logger = logging.getLogger(__name__)
+
+
+def _set_auth_cookie(response, refresh_token):
+    """Anexa o refresh token como cookie HttpOnly seguro na resposta."""
+    response.set_cookie(
+        key='refresh_token',
+        value=str(refresh_token),
+        httponly=True,
+        secure=True,
+        samesite='None',
+        path='/'
+    )
+
+
+def _build_user_data(user, include_tem_senha=False):
+    data = {
+        'id_usuario': user.id_usuario,
+        'email': user.email,
+        'nome': user.nome,
+        'foto_perfil': user.foto_perfil,
+        'data_criacao_conta': user.data_criacao_conta,
+        'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None,
+        'nome_perfil': user.id_perfil.nome_perfil if user.id_perfil else None,
+        'google_id': user.google_id,
+    }
+    if include_tem_senha:
+        data['tem_senha'] = user.has_usable_password()
+    return data
+
+
+class AuthRateThrottle(AnonRateThrottle):
+    rate = '10/minute'
+    scope = 'auth'
+
 
 class GoogleSignInAPIView(APIView):
     """
     Endpoint para autenticação com Google OAuth.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
         token = request.data.get('credential')
@@ -35,9 +71,8 @@ class GoogleSignInAPIView(APIView):
             return Response({'error': 'Credential not provided'}, status=400)
 
         try:
-            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
             user_data_from_google = id_token.verify_oauth2_token(
-                token, requests.Request(), client_id
+                token, requests.Request(), settings.GOOGLE_OAUTH_CLIENT_ID
             )
         except ValueError:
             return Response({'error': 'Invalid token'}, status=403)
@@ -61,42 +96,26 @@ class GoogleSignInAPIView(APIView):
             user.nome = full_name
             user.foto_perfil = picture_url
             user.ultimo_login = timezone.now()
-            user.save()
+            user.save(update_fields=['nome', 'foto_perfil', 'ultimo_login', 'google_id'])
         else:
+            # Atribui perfil padrão (Servidor) para novos usuários
+            default_profile = PerfilAcesso.objects.filter(nome_perfil='Servidor').first()
             user = Usuario.objects.create_user(
                 email=email,
                 nome=full_name,
                 foto_perfil=picture_url,
-                google_id=google_id
+                google_id=google_id,
+                id_perfil=default_profile
             )
 
         refresh = RefreshToken.for_user(user)
 
-        # Prepara os dados do usuário para a resposta
-        user_data = {
-            'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
-            'foto_perfil': user.foto_perfil, 'data_criacao_conta': user.data_criacao_conta,
-            'id_perfil': user.id_perfil.id_perfil if user.id_perfil else None,
-            'nome_perfil': user.id_perfil.nome_perfil if user.id_perfil else None,
-            'google_id': user.google_id
-        }
-        # Adiciona o campo tem_senha se o usuário for admin
-        if user.id_perfil and user.id_perfil.nome_perfil == 'Administrador':
-            user_data['tem_senha'] = user.has_usable_password()
-
+        is_admin = user.id_perfil and user.id_perfil.nome_perfil == 'Administrador'
         response = Response({
             'access': str(refresh.access_token),
-            'user_data': user_data
+            'user_data': _build_user_data(user, include_tem_senha=is_admin)
         }, status=200)
-
-        response.set_cookie(
-            key='refresh_token', 
-            value=str(refresh), 
-            httponly=True, 
-            secure=True,
-            samesite='None', 
-            path='/'
-        )
+        _set_auth_cookie(response, refresh)
         return response
 
 class GoogleSignOutAPIView(APIView):
@@ -106,7 +125,18 @@ class GoogleSignOutAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        return Response({"detail": "User logged out successfully'"}, status=200)
+        # Invalida o refresh token para encerrar totalmente a sessão
+        refresh_token = request.COOKIES.get('refresh_token')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except (TokenError, Exception):
+                pass  # Token already expired or invalid — ignore
+
+        response = Response({"detail": "User logged out successfully."}, status=200)
+        response.delete_cookie('refresh_token', path='/', samesite='None')
+        return response
 
 class CookieTokenRefreshView(TokenRefreshView):
     """
@@ -116,21 +146,13 @@ class CookieTokenRefreshView(TokenRefreshView):
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return Response({'error': 'Refresh token not found in cookie'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         request.data['refresh'] = refresh_token
-        
+
         try:
             response = super().post(request, *args, **kwargs)
             if 'refresh' in response.data:
-                new_refresh_token = response.data['refresh']
-                response.set_cookie(
-                    key='refresh_token', 
-                    value=new_refresh_token, 
-                    httponly=True, 
-                    secure=True,
-                    samesite='None',
-                    path='/'
-                )
+                _set_auth_cookie(response, response.data['refresh'])
             return response
         except (InvalidToken, TokenError) as e:
             return Response({'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
@@ -146,8 +168,7 @@ class LinkGoogleAccountView(APIView):
         if not credential:
             return Response({'error': 'Credential não fornecido.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-            idinfo = id_token.verify_oauth2_token(credential, requests.Request(), client_id)
+            idinfo = id_token.verify_oauth2_token(credential, requests.Request(), settings.GOOGLE_OAUTH_CLIENT_ID)
             google_id = idinfo['sub']
             google_email = idinfo.get('email')
             google_name = f"{idinfo.get('given_name', '')} {idinfo.get('family_name', '')}".strip()
@@ -166,21 +187,14 @@ class LinkGoogleAccountView(APIView):
                     admin_user.foto_perfil = google_picture
                     fields_to_update.append('foto_perfil')
                 admin_user.save(update_fields=fields_to_update)
-            user_data = {
-                'id_usuario': admin_user.id_usuario, 'email': admin_user.email, 'nome': admin_user.nome,
-                'foto_perfil': admin_user.foto_perfil, 'data_criacao_conta': admin_user.data_criacao_conta.isoformat(),
-                'id_perfil': admin_user.id_perfil.id_perfil if admin_user.id_perfil else None,
-                'nome_perfil': admin_user.id_perfil.nome_perfil if admin_user.id_perfil else None,
-                'google_id': admin_user.google_id,
-                'tem_senha': admin_user.has_usable_password()
-            }
             return Response({
                 'detail': 'Conta Google vinculada e dados atualizados com sucesso.',
-                'user_data': user_data
+                'user_data': _build_user_data(admin_user, include_tem_senha=True)
             }, status=status.HTTP_200_OK)
         except ValueError:
             return Response({'error': 'Token do Google inválido.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
+            logger.exception('Erro inesperado em LinkGoogleAccountView')
             return Response({'error': 'Ocorreu um erro inesperado no servidor.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AdminLoginView(APIView):
@@ -188,6 +202,7 @@ class AdminLoginView(APIView):
     Endpoint para autenticação de admin via e-mail e senha.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
         email = request.data.get('email')
@@ -198,26 +213,13 @@ class AdminLoginView(APIView):
         if user is not None:
             if user.id_perfil and user.id_perfil.nome_perfil == 'Administrador':
                 user.ultimo_login = timezone.now()
-                user.save()
+                user.save(update_fields=['ultimo_login'])
                 refresh = RefreshToken.for_user(user)
                 response = Response({
                     'access': str(refresh.access_token),
-                    'user_data': {
-                        'id_usuario': user.id_usuario, 'email': user.email, 'nome': user.nome,
-                        'foto_perfil': user.foto_perfil, 'data_criacao_conta': user.data_criacao_conta,
-                        'id_perfil': user.id_perfil.id_perfil, 'nome_perfil': user.id_perfil.nome_perfil,
-                        'google_id': user.google_id,
-                        'tem_senha': user.has_usable_password()
-                    }
+                    'user_data': _build_user_data(user, include_tem_senha=True)
                 })
-                response.set_cookie(
-                    key='refresh_token', 
-                    value=str(refresh), 
-                    httponly=True, 
-                    secure=True,
-                    samesite='None', 
-                    path='/'
-                )
+                _set_auth_cookie(response, refresh)
                 return response
             else:
                 return Response({'error': 'Acesso negado. Esta área é restrita para administradores.'}, status=status.HTTP_403_FORBIDDEN)
@@ -231,12 +233,24 @@ class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated, IsAdministrador]
 
     def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
         new_password = request.data.get('new_password')
-        if not new_password or len(new_password) < 8:
+        if not new_password:
             return Response(
-                {"error": "A nova senha é obrigatória e deve ter no mínimo 8 caracteres."},
+                {"error": "A nova senha é obrigatória."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        try:
+            validate_password(new_password, user=request.user)
+        except DjangoValidationError as e:
+            return Response(
+                {"error": e.messages},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         user = request.user
         user.set_password(new_password)
         user.save(update_fields=['password'])
@@ -245,20 +259,11 @@ class ChangePasswordView(APIView):
 class UserAPIView(APIView):
     """
     Endpoint para definir tipo do usuário ou deletar um usuário.
+    Apenas administradores podem usar este endpoint.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdministrador]
 
     def put(self, request, id_usuario):
-        usuario_logado = request.user
-        is_admin = usuario_logado.id_perfil and usuario_logado.id_perfil.nome_perfil == 'Administrador'
-
-        # Um usuário só pode editar a si mesmo, a menos que seja um administrador
-        if not (usuario_logado.id_usuario == id_usuario or is_admin):
-            return Response(
-                {"error": "Você não tem permissão para alterar este perfil."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         id_perfil_novo = request.data.get('id_perfil')
         if not id_perfil_novo:
             return Response({"error": "id_perfil is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -268,12 +273,12 @@ class UserAPIView(APIView):
             user_a_ser_editado = Usuario.objects.get(id_usuario=id_usuario)
 
             # Impede que um admin remova o próprio privilégio
-            if (usuario_logado.id_usuario == user_a_ser_editado.id_usuario and is_admin and perfil_novo.nome_perfil != 'Administrador'):
+            if (request.user.id_usuario == user_a_ser_editado.id_usuario and perfil_novo.nome_perfil != 'Administrador'):
                 return Response(
                     {"error": "Administradores não podem remover o próprio privilégio."},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
+
             # Se o usuário é rebaixado de admin, invalida a senha
             if user_a_ser_editado.id_perfil and user_a_ser_editado.id_perfil.nome_perfil == 'Administrador' and perfil_novo.nome_perfil != 'Administrador':
                 user_a_ser_editado.set_unusable_password()
@@ -289,15 +294,9 @@ class UserAPIView(APIView):
 
     def delete(self, request, id_usuario):
         """
-        Deleta um usuário. Apenas administradores podem fazer isso, e não podem deletar a si mesmos.
+        Deleta um usuário. Administradores não podem deletar a si mesmos.
         """
-        usuario_logado = request.user
-        is_admin = usuario_logado.id_perfil and usuario_logado.id_perfil.nome_perfil == 'Administrador'
-
-        if not is_admin:
-            return Response({"error": "Apenas administradores podem remover usuários."}, status=status.HTTP_403_FORBIDDEN)
-
-        if usuario_logado.id_usuario == id_usuario:
+        if request.user.id_usuario == id_usuario:
             return Response({"error": "Você não pode deletar sua própria conta."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -320,5 +319,9 @@ def health_check(request):
     """
     Função para "health check" que verifica se o app está funcionando.
     """
-    data = { 'status': 'ok', 'message': 'App está rodando' }
-    return JsonResponse(data)
+    try:
+        connection.ensure_connection()
+        return JsonResponse({'status': 'ok', 'message': 'App está rodando'})
+    except Exception:
+        logger.exception('Health check falhou — banco inacessível')
+        return JsonResponse({'status': 'error', 'message': 'Banco de dados inacessível'}, status=503)
