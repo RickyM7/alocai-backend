@@ -1,6 +1,5 @@
 from django.contrib import admin
 from .models import Recurso
-from django.utils.html import format_html
 
 @admin.register(Recurso)
 class RecursoAdmin(admin.ModelAdmin):
@@ -20,7 +19,3 @@ class RecursoAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
-    
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.select_related('tipo_recurso') if hasattr(Recurso, 'tipo_recurso') else qs
