@@ -28,7 +28,7 @@ class UsuarioManager(BaseUserManager):
 
 class Usuario(AbstractBaseUser, PermissionsMixin):
     id_usuario = models.AutoField(primary_key=True)
-    id_perfil = models.ForeignKey(PerfilAcesso, on_delete=models.CASCADE, db_column='id_perfil', null=True, blank=True)
+    id_perfil = models.ForeignKey(PerfilAcesso, on_delete=models.PROTECT, db_column='id_perfil', null=True, blank=True)
     nome = models.CharField(max_length=255)
     email = models.EmailField(max_length=255, unique=True)
     email_admin = models.EmailField(max_length=255, null=True, blank=True, unique=True, db_index=True)
@@ -44,10 +44,6 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nome']
-
-    @property
-    def is_authenticated(self):
-        return True
 
     @property
     def id(self):
