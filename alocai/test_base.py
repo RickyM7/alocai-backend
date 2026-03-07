@@ -1,9 +1,11 @@
 from rest_framework.test import APITestCase
+from django.core.cache import cache
 from login.models import Usuario
 from user_profile.models import PerfilAcesso
 from resources.models import Recurso
 from booking.models import Agendamento, AgendamentoPai
 from notification.models import Notificacao
+
 
 class BaseTestCase(APITestCase):
     @classmethod
@@ -33,3 +35,6 @@ class BaseTestCase(APITestCase):
             password='password123',
             id_perfil=cls.server_profile
         )
+
+    def setUp(self):
+        cache.clear()
