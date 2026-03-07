@@ -1,48 +1,26 @@
+import logging
+
 from rest_framework import generics, permissions, status
+
+logger = logging.getLogger(__name__)
+
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
 from django.db import transaction
-from user_profile.permissions import IsServidor, IsAdministrador
-from .models import Agendamento, AgendamentoPai
-from .serializers import (
-    AgendamentoPaiCreateSerializer, ListarAgendamentosSerializer,
-    AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer,
-    AdminAgendamentoPaiSerializer, AdminAgendamentoPaiUpdateSerializer
-)
-from collections import defaultdict
-from datetime import datetime
 from django.utils import timezone
+from collections import defaultdict
+from user_profile.permissions import IsServidor, IsAdministrador
+from .models import Agendamento, AgendamentoPai, UsoImediato
+from resources.models import Recurso, StatusRecurso
+from .serializers import (
+    AgendamentoPaiCreateSerializer,
+    AgendamentoPaiDetailSerializer, AdminAgendamentoSerializer,
+    AdminAgendamentoPaiSerializer, AdminAgendamentoPaiUpdateSerializer,
+    UsoImediatoSerializer
+)
 from notification.utils import criar_e_enviar_notificacao, notificar_admins, criar_notificacao_resumida_conflito
-
-def _verificar_e_negar_conflitos(agendamento_aprovado):
-    """
-    Função auxiliar para encontrar e negar agendamentos pendentes que conflitam
-    com um agendamento recém-aprovado
-    """
-    recurso = agendamento_aprovado.agendamento_pai.id_recurso
-    data_inicio = agendamento_aprovado.data_inicio
-    hora_inicio = agendamento_aprovado.hora_inicio
-    hora_fim = agendamento_aprovado.hora_fim
-
-    conflitos = Agendamento.objects.select_related('agendamento_pai', 'agendamento_pai__id_usuario').filter(
-        agendamento_pai__id_recurso=recurso,
-        data_inicio=data_inicio,
-        hora_inicio__lt=hora_fim,
-        hora_fim__gt=hora_inicio,
-        status_agendamento='pendente'
-    ).exclude(id_agendamento=agendamento_aprovado.id_agendamento)
-
-    if conflitos.exists():
-        conflitos_ids = list(conflitos.values_list('id_agendamento', flat=True))
-        Agendamento.objects.filter(id_agendamento__in=conflitos_ids).update(status_agendamento='negado')
-
-        for ag_conflitante in conflitos:
-            ag_pai_conflitante = ag_conflitante.agendamento_pai
-            mensagem = (f"Seu agendamento para '{recurso.nome_recurso}' no dia "
-                        f"{data_inicio.strftime('%d/%m/%Y')} foi negado devido a um conflito de horário.")
-            criar_e_enviar_notificacao(ag_pai_conflitante.id_usuario, ag_pai_conflitante, mensagem)
 
 def _negar_conflitos_em_massa(agendamentos_aprovados):
     """
@@ -281,14 +259,16 @@ class UserAgendamentoPaiStatusUpdateView(generics.UpdateAPIView):
         # Se cancelou, verifica se o recurso pode voltar a ficar disponível
         if novo_status == 'cancelado':
             recurso = instance.id_recurso
-            outras_reservas_ativas = Agendamento.objects.filter(
-                agendamento_pai__id_recurso=recurso,
-                status_agendamento='aprovado'
-            ).exists()
+            # Só restaura DISPONÍVEL se estiver RESERVADO e sem outras reservas aprovadas
+            if recurso.status_recurso == StatusRecurso.RESERVADO:
+                outras_reservas_ativas = Agendamento.objects.filter(
+                    agendamento_pai__id_recurso=recurso,
+                    status_agendamento='aprovado'
+                ).exists()
 
-            if not outras_reservas_ativas:
-                recurso.status_recurso = 'disponivel'
-                recurso.save()
+                if not outras_reservas_ativas:
+                    recurso.status_recurso = StatusRecurso.DISPONIVEL
+                    recurso.save(update_fields=['status_recurso'])
 
         instance.refresh_from_db()
         return Response(self.get_serializer(instance).data)
@@ -320,14 +300,16 @@ class UserAgendamentoStatusUpdateView(generics.UpdateAPIView):
         
         if novo_status == 'cancelado':
             recurso = instance.agendamento_pai.id_recurso
-            outras_reservas_ativas = Agendamento.objects.filter(
-                agendamento_pai__id_recurso=recurso,
-                status_agendamento='aprovado'
-            ).exists()
+            # Só restaura DISPONÍVEL se estiver RESERVADO e sem outras reservas aprovadas
+            if recurso.status_recurso == StatusRecurso.RESERVADO:
+                outras_reservas_ativas = Agendamento.objects.filter(
+                    agendamento_pai__id_recurso=recurso,
+                    status_agendamento='aprovado'
+                ).exists()
 
-            if not outras_reservas_ativas:
-                recurso.status_recurso = 'disponivel'
-                recurso.save()
+                if not outras_reservas_ativas:
+                    recurso.status_recurso = StatusRecurso.DISPONIVEL
+                    recurso.save(update_fields=['status_recurso'])
 
         return Response(self.get_serializer(instance).data)
 
@@ -362,5 +344,64 @@ class RecursoDisponibilidadeView(APIView):
                 })
 
             return Response(booked_slots)
-        except Exception as e:
-            return Response({'error': f'Ocorreu um erro interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            logger.exception('Erro ao consultar disponibilidade do recurso %s', recurso_id)
+            return Response({'error': 'Erro interno ao consultar disponibilidade.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class RegistrarUsoImediatoView(APIView):
+    """
+    POST: Registra uso imediato de um recurso (Terceirizado).
+    GET: Lista os usos imediatos do usuário logado (auto-finaliza expirados).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = UsoImediatoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Verifica se o recurso está disponível (com lock pessimista)
+        recurso_id = serializer.validated_data['id_recurso'].pk
+        with transaction.atomic():
+            recurso = Recurso.objects.select_for_update().get(pk=recurso_id)
+            if recurso.status_recurso != StatusRecurso.DISPONIVEL:
+                return Response(
+                    {'error': 'Este recurso não está disponível no momento.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            recurso.status_recurso = StatusRecurso.RESERVADO
+            recurso.save(update_fields=['status_recurso'])
+            uso = serializer.save(id_usuario=request.user, id_recurso=recurso)
+
+        return Response(UsoImediatoSerializer(uso).data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        # Auto-finaliza usos expirados
+        usos_ativos = UsoImediato.objects.filter(id_usuario=request.user, ativo=True)
+        for uso in usos_ativos:
+            if uso.expirado:
+                uso.finalizar()
+
+        usos = UsoImediato.objects.filter(id_usuario=request.user)
+        serializer = UsoImediatoSerializer(usos, many=True)
+        return Response(serializer.data)
+
+
+class FinalizarUsoImediatoView(APIView):
+    """
+    PUT: Finaliza um uso imediato ativo e libera o recurso.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, id_uso):
+        try:
+            uso = UsoImediato.objects.select_related('id_recurso').get(id_uso=id_uso, id_usuario=request.user)
+        except UsoImediato.DoesNotExist:
+            return Response({'error': 'Uso imediato não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not uso.ativo:
+            return Response({'error': 'Este uso já foi finalizado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        uso.finalizar()
+        return Response(UsoImediatoSerializer(uso).data)

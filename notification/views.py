@@ -22,6 +22,22 @@ class MarcarNotificacoesComoLidasView(generics.UpdateAPIView):
         queryset.update(lida=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class MarcarNotificacaoComoLidaView(generics.UpdateAPIView):
+    """
+    View para marcar uma notificação específica como lida.
+    """
+    serializer_class = NotificacaoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notificacao.objects.filter(destinatario=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.lida = True
+        instance.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 class GerenciarNotificacaoView(generics.DestroyAPIView):
     """
     View para deletar uma notificação específica.

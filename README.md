@@ -1,138 +1,151 @@
-# Sistema de Gerenciamento de Laboratórios - Alocaí (Backend)
+# Alocaí — Backend
 
-## :octocat: Integrantes  
+API REST do sistema **Alocaí**, uma plataforma para gerenciamento e agendamento de uso de laboratórios em instituições de ensino.
+
+Desenvolvido com **Django 5** e **Django REST Framework**.
+
+## :octocat: Integrantes
+
 [Gison Vilaça](https://github.com/gison-vilaca) | [Lucas Victor](https://github.com/lucasvictoor) | [Ricardo Martins](https://github.com/RickyM7) | [Sara Abreu](https://github.com/ynjisng)
 
-## :page_with_curl: Sobre o Projeto  
-Este repositório contém a API backend do sistema **Alocaí**, uma aplicação web para gerenciamento e agendamento de uso de laboratórios, desenvolvida com **Django** e **Django Rest Framework**. O projeto está sendo realizado para a disciplina de **Projeto de Desenvolvimento** do curso de **Bacharelado em Ciência da Computação** da **UFAPE**, sob orientação do professor [Rodrigo Gusmão de Carvalho Rocha](https://github.com/rgcrochaa), como parte da **2ª Verificação de Aprendizagem**.
+## :page_with_curl: Sobre o Projeto
 
-O backend fornece os endpoints REST necessários para autenticação, cadastro de laboratórios, agendamento de uso e controle de permissões, funcionando como base de dados e lógica da aplicação. O frontend correspondente está disponível [neste repositório](https://github.com/Projeto-Des-SW/alocai-frontend).
+Projeto da disciplina de **Projeto de Desenvolvimento** do curso de **Bacharelado em Ciência da Computação** da **UFAPE**, orientado pelo professor [Rodrigo Gusmão de Carvalho Rocha](https://github.com/rgcrochaa).
 
-## :round_pushpin: Objetivos do Sistema  
-- Permitir que servidores da instituição solicitem horários em laboratórios de forma digital, segura e centralizada.  
-- Automatizar o fluxo antes realizado manualmente via planilhas e e-mail.  
-- Oferecer diferentes visões conforme o tipo de usuário (ex: coordenador, secretaria, etc).  
-- Permitir especificações como:
-  - Capacidade mínima de alunos  
-  - Softwares específicos desejados  
-  - Tipo de laboratório (comum ou especializado)
+O backend fornece os endpoints REST para autenticação (Google OAuth + JWT), cadastro de recursos, agendamentos, uso imediato, notificações e controle de permissões. O frontend correspondente está em [alocai-frontend](https://github.com/Projeto-Des-SW/alocai-frontend).
 
-## :hammer_and_wrench: Tecnologias Usadas  
-- [Python 3](https://www.python.org/)  
-- [Django](https://www.djangoproject.com/)  
-- [Django Rest Framework](https://www.django-rest-framework.org/)  
+## :hammer_and_wrench: Tecnologias
+
+- [Python 3](https://www.python.org/)
+- [Django 5](https://www.djangoproject.com/)
+- [Django REST Framework](https://www.django-rest-framework.org/)
 - [Simple JWT](https://django-rest-framework-simplejwt.readthedocs.io/)
+- [Google Auth](https://google-auth.readthedocs.io/) (OAuth 2.0)
+- [Gunicorn](https://gunicorn.org/) + [WhiteNoise](http://whitenoise.evans.io/) (produção)
+- SQLite (dev) / PostgreSQL (produção via `dj-database-url`)
 
-## :construction: Status do Projeto  
-Finalizado 
-Entrega Final referente à 2ª VA
+## 📂 Estrutura
 
-## 📂 Organização
+```
+alocai/          → Configurações do projeto Django (settings, urls, wsgi)
+booking/         → Agendamentos e uso imediato (models, views, serializers)
+login/           → Autenticação (Google OAuth, JWT, management commands)
+notification/    → Notificações por e-mail e no sistema
+resources/       → Cadastro e administração de recursos (laboratórios)
+user_profile/    → Perfis de acesso e permissões
+```
 
-Este repositório está organizado com:
-- `alocai/` – Projeto Django (configurações, `settings.py`, `urls.py`, etc.)
-- `booking/` – App de agendamentos (CRUD de solicitações, aprovação e status)
-- `login/` – App de autenticação (Google OAuth, JWT, administração)
-- `notification/` – App de notificações (listar e marcar como lidas)
-- `resources/` – App de recursos (laboratórios e administração dos recursos)
-- `user_profile/` – Perfis de acesso e visibilidade
-- `requirements.txt` – Dependências do projeto
-- `manage.py` – Comando principal para execução
+## 🚀 Configuração local
 
-## 🚀 Instruções para rodar localmente
+### 1. Clonar e criar ambiente virtual
 
-1. **Clonar o repositório:**
-   
-   git clone https://github.com/Projeto-Des-SW/alocai-backend.git
+```bash
+git clone https://github.com/Projeto-Des-SW/alocai-backend.git
+cd alocai-backend
+python -m venv venv
+source venv/bin/activate   # Linux/Mac
+# venv\Scripts\activate    # Windows
+```
 
-   cd alocai-backend
+### 2. Instalar dependências
 
-2. **Criar ambiente virtual e ativar:**
-   
-   python -m venv venv
+```bash
+pip install -r requirements.txt
+```
 
-   Windows: venv\Scripts\activate
+### 3. Configurar variáveis de ambiente
 
-   Linux/Mac: source venv/bin/activate
+Copie o arquivo de exemplo e preencha os valores:
 
-3. **Instalar as dependências:**
+```bash
+cp .env.example .env
+```
 
-   pip install -r requirements.txt
+Variáveis obrigatórias:
+| Variável | Descrição |
+|---|---|
+| `SECRET_KEY` | Chave secreta do Django |
+| `GOOGLE_OAUTH_CLIENT_ID` | Client ID do Google OAuth |
+| `ADMIN_EMAIL` | E-mail do administrador inicial |
+| `ADMIN_PASSWORD` | Senha do administrador inicial |
 
-4. **Rodar as migrações e iniciar o servidor:**
+Variáveis opcionais:
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `DEBUG` | Modo de depuração | `True` |
+| `DJANGO_ALLOWED_HOSTS` | Hosts permitidos | `localhost,127.0.0.1` |
+| `CORS_EXTRA_ORIGINS` | Origens CORS extras | (vazio) |
+| `DATABASE_URL` | URL do banco de dados | SQLite local |
+| `EMAIL_HOST_USER` | E-mail SMTP para notificações | (vazio) |
+| `EMAIL_HOST_PASSWORD` | Senha do e-mail SMTP | (vazio) |
 
-   python manage.py migrate  
+### 4. Rodar migrações e criar admin
 
-   python manage.py runserver
+```bash
+python manage.py migrate
+python manage.py create_admin
+```
 
-   O backend estará disponível em: http://localhost:8000
+### 5. Iniciar o servidor
 
-## 🔐 Acesso
-O backend utiliza autenticação via **JWT** e login com **Google OAuth**.
+```bash
+python manage.py runserver
+```
 
-- Por padrão, as permissões globais exigem autenticação (`IsAuthenticated`), conforme `REST_FRAMEWORK` em `alocai/settings.py`.
-- Endpoints públicos incluem: `POST /api/token/`, `POST /api/token/refresh/`, `GET /health_check` e rotas de login Google.
-- Usuário Administrador: defina `ADMIN_EMAIL` e `ADMIN_PASSWORD` no `.env` antes de rodar `migrate` para criação/atualização automática (ver migração `login/migrations/0002_create_admin_user.py`).
+O backend estará disponível em `http://localhost:8000`.
 
-Fluxos de autenticação:
-- JWT: obtenha o par de tokens em `POST /api/token/` e use o `access` no header `Authorization: Bearer <token>`.
-- Google: `POST /api/google-sign-in/` com o `credential` do Google One Tap; `POST /api/google-sign-out/` para logout.
+## 🧪 Testes
 
-## 📎 Links relacionados
-🔜 [Frontend do Alocaí (Nuxt 3)](https://github.com/Projeto-Des-SW/alocai-frontend)
+```bash
+python manage.py test
+```
+
+O projeto possui **154 testes** cobrindo models, serializers, views, permissões, auto-expiração, notificações e health check.
+
+## 🔐 Autenticação
+
+- **JWT**: `POST /api/token/` para obter tokens; use `Authorization: Bearer <access>` nos headers.
+- **Google OAuth**: `POST /api/google-sign-in/` com o `credential` do Google One Tap.
+- **Admin**: login com e-mail e senha via `POST /api/admin/login/`.
+- O refresh token é armazenado em cookie HttpOnly seguro.
 
 ## 🔗 Endpoints principais
 
-Base URL local: `http://localhost:8000`
-
-- Autenticação (JWT):
-  - `POST /api/token/` – Obter tokens
-  - `POST /api/token/refresh/` – Renovar token
-
-- Login (Google/Admin) – `login/urls.py`:
-  - `POST /api/google-sign-in/`
-  - `POST /api/google-sign-out/`
-  - `GET /api/user/<id_usuario>/`
-  - `GET /api/admin/users/`
-  - `POST /api/admin/login/`
-  - `POST /api/admin/link-google/`
-  - `POST /api/admin/change-password/`
-
-- Agendamentos – `booking/urls.py` (prefixo `api/`):
-  - `POST /api/agendamentos/`
-  - `GET /api/agendamentos/minhas-reservas/`
-  - `GET /api/agendamentos/pai/<id_agendamento_pai>/`
-  - `GET /api/admin/agendamentos/`
-  - `PATCH /api/admin/agendamentos/<id_agendamento>/status/`
-  - `PUT|PATCH|DELETE /api/admin/agendamentos/pai/<id_agendamento_pai>/`
-  - `PATCH /api/agendamentos/pai/<id_agendamento_pai>/status/`
-  - `PATCH /api/agendamentos/<id_agendamento>/status/`
-  - `GET /api/recursos/<recurso_id>/disponibilidade/`
-
-- Recursos – `resources/urls.py` (prefixo `api/admin/` para rotas administrativas):
-  - `GET|POST /api/admin/recursos/`
-  - `GET|PUT|PATCH|DELETE /api/admin/recursos/<id>/`
-  - `GET /api/admin/recursos/<id_recurso>/agendamentos/`
-  - Público autenticado: `GET /api/recursos/` (lista recursos)
-
-- Notificações – `notification/urls.py` (prefixo `api/`):
-  - `GET /api/notificacoes/`
-  - `POST /api/notificacoes/marcar-como-lidas/`
-  - `GET|PATCH|DELETE /api/notificacoes/<id>/`
-
-- Perfis de Acesso – `user_profile/urls.py` (prefixo `api/`):
-  - `GET /api/perfil-acesso/`
-
-- Dashboard – `alocai/urls.py`:
-  - `GET /api/dashboard/`
-  - `GET /api/dashboard/calendar/`
-
-- Saúde do serviço:
-  - `GET /health_check`
+| Grupo | Método | Rota | Descrição |
+|---|---|---|---|
+| **Auth** | POST | `/api/token/` | Obter par de tokens JWT |
+| | POST | `/api/token/refresh/` | Renovar access token |
+| **Login** | POST | `/api/google-sign-in/` | Login com Google |
+| | POST | `/api/google-sign-out/` | Logout |
+| | POST | `/api/admin/login/` | Login admin (e-mail + senha) |
+| | POST | `/api/admin/link-google/` | Vincular Google ao admin |
+| | POST | `/api/admin/change-password/` | Alterar senha do admin |
+| | GET | `/api/admin/users/` | Listar usuários |
+| | GET/PUT | `/api/user/<id>/` | Ver/editar usuário |
+| **Agendamentos** | POST | `/api/agendamentos/` | Criar agendamento |
+| | GET | `/api/agendamentos/minhas-reservas/` | Minhas reservas |
+| | GET | `/api/agendamentos/pai/<id>/` | Detalhe do agendamento pai |
+| | PATCH | `/api/agendamentos/pai/<id>/status/` | Alterar status (usuário) |
+| | PATCH | `/api/agendamentos/<id>/status/` | Alterar status individual |
+| | GET | `/api/admin/agendamentos/` | Listar todos (admin) |
+| | PATCH | `/api/admin/agendamentos/<id>/status/` | Alterar status (admin) |
+| | PUT/PATCH/DELETE | `/api/admin/agendamentos/pai/<id>/` | Gerenciar pai (admin) |
+| | GET | `/api/recursos/<id>/disponibilidade/` | Disponibilidade do recurso |
+| **Uso Imediato** | GET/POST | `/api/uso-imediato/` | Listar/registrar uso |
+| | PATCH | `/api/uso-imediato/<id>/finalizar/` | Finalizar uso |
+| **Recursos** | GET | `/api/recursos/` | Listar recursos (público) |
+| | GET/POST | `/api/admin/recursos/` | CRUD admin |
+| | GET/PUT/PATCH/DELETE | `/api/admin/recursos/<id>/` | Detalhe admin |
+| **Notificações** | GET | `/api/notificacoes/` | Listar notificações |
+| | POST | `/api/notificacoes/marcar-como-lidas/` | Marcar todas como lidas |
+| | GET/PATCH/DELETE | `/api/notificacoes/<id>/` | Detalhe da notificação |
+| **Dashboard** | GET | `/api/dashboard/` | Dados do dashboard |
+| | GET | `/api/dashboard/calendar/` | Dados do calendário |
+| **Perfis** | GET | `/api/perfil-acesso/` | Listar perfis |
+| **Saúde** | GET | `/health_check` | Status do serviço |
 
 ## 👨‍🏫 Professor Responsável
+
 [Rodrigo Gusmão de Carvalho Rocha](https://github.com/rgcrochaa)
 
-Disciplina: Projeto de Desenvolvimento – UFAPE
-
-Período: 2025.1
+Disciplina: Projeto de Desenvolvimento — UFAPE · 2025.1

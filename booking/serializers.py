@@ -1,7 +1,6 @@
 from rest_framework import serializers
-from .models import Agendamento, AgendamentoPai
-from resources.models import Recurso
-from login.models import Usuario
+from .models import Agendamento, AgendamentoPai, UsoImediato
+
 
 class AgendamentoFilhoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,16 +14,36 @@ class AgendamentoFilhoSerializer(serializers.ModelSerializer):
             'status_agendamento',
         ]
 
+class AgendamentoFilhoInputSerializer(serializers.Serializer):
+    """Serializer para validar cada item de datas_agendamento."""
+    data_inicio = serializers.DateField()
+    hora_inicio = serializers.TimeField()
+    data_fim = serializers.DateField()
+    hora_fim = serializers.TimeField()
+
+    def validate(self, data):
+        if data['hora_fim'] <= data['hora_inicio']:
+            raise serializers.ValidationError(
+                f"hora_fim ({data['hora_fim']}) deve ser posterior a hora_inicio ({data['hora_inicio']})."
+            )
+        if data['data_fim'] < data['data_inicio']:
+            raise serializers.ValidationError(
+                f"data_fim ({data['data_fim']}) não pode ser anterior a data_inicio ({data['data_inicio']})."
+            )
+        return data
+
+
 class AgendamentoPaiCreateSerializer(serializers.ModelSerializer):
     datas_agendamento = serializers.ListField(
-        child=serializers.DictField(), write_only=True
+        child=AgendamentoFilhoInputSerializer(), write_only=True, min_length=1
     )
 
     class Meta:
         model = AgendamentoPai
         fields = [
             'id_agendamento_pai', 'id_recurso', 'finalidade', 'observacoes',
-            'id_responsavel', 'id_usuario', 'data_criacao', 'datas_agendamento',
+            'software_necessario', 'id_responsavel', 'id_usuario', 'data_criacao',
+            'datas_agendamento',
         ]
         read_only_fields = ('id_usuario', 'data_criacao')
 
@@ -51,21 +70,9 @@ class AgendamentoPaiDetailSerializer(serializers.ModelSerializer):
         model = AgendamentoPai
         fields = [
             'id_agendamento_pai', 'recurso', 'finalidade', 'observacoes',
-            'responsavel', 'data_criacao', 'agendamentos_filhos'
+            'software_necessario', 'responsavel', 'data_criacao', 'agendamentos_filhos'
         ]
 
-class ListarAgendamentosSerializer(serializers.ModelSerializer):
-    recurso = serializers.CharField(source='agendamento_pai.id_recurso.nome_recurso', read_only=True)
-    finalidade = serializers.CharField(source='agendamento_pai.finalidade', read_only=True)
-    observacoes = serializers.CharField(source='agendamento_pai.observacoes', read_only=True)
-
-    class Meta:
-        model = Agendamento
-        fields = [
-            'id_agendamento', 'recurso', 'data_inicio', 'hora_inicio',
-            'hora_fim',
-            'finalidade', 'status_agendamento', 'agendamento_pai', 'observacoes'
-        ]
 
 # Serializers do ADM
 class AdminAgendamentoSerializer(serializers.ModelSerializer):
@@ -73,7 +80,7 @@ class AdminAgendamentoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agendamento
         fields = [
-            'id_agendamento', 'data_inicio', 'hora_inicio', 'hora_fim',
+            'id_agendamento', 'data_inicio', 'hora_inicio', 'data_fim', 'hora_fim',
             'status_agendamento', 'gerenciado_por_nome', 'data_ultima_atualizacao'
         ]
 
@@ -87,8 +94,8 @@ class AdminAgendamentoPaiSerializer(serializers.ModelSerializer):
         model = AgendamentoPai
         fields = [
             'id_agendamento_pai', 'recurso', 'finalidade', 'observacoes',
-            'solicitante', 'data_criacao', 'agendamentos_filhos', 'id_responsavel',
-            'gerenciado_info'
+            'software_necessario', 'solicitante', 'data_criacao',
+            'agendamentos_filhos', 'id_responsavel', 'gerenciado_info'
         ]
 
     def get_gerenciado_info(self, obj):
@@ -101,11 +108,6 @@ class AdminAgendamentoPaiSerializer(serializers.ModelSerializer):
             }
         return None
 
-
-class UsuarioSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Usuario
-        fields = ['id_usuario', 'nome', 'email']
 
 class PublicAgendamentoSerializer(serializers.ModelSerializer):
     # Visualização pública de agendamentos (para usar no dashboard)
@@ -171,24 +173,41 @@ class AdminAgendamentoPaiUpdateSerializer(serializers.ModelSerializer):
         return data
 
     def update(self, instance, validated_data):
-        instance.finalidade = validated_data.get('finalidade', instance.finalidade)
-        instance.observacoes = validated_data.get('observacoes', instance.observacoes)
-        instance.id_responsavel_id = validated_data.get('id_responsavel', instance.id_responsavel_id)
-        instance.save()
+        from django.db import transaction
+        with transaction.atomic():
+            instance.finalidade = validated_data.get('finalidade', instance.finalidade)
+            instance.observacoes = validated_data.get('observacoes', instance.observacoes)
+            instance.id_responsavel_id = validated_data.get('id_responsavel', instance.id_responsavel_id)
+            instance.save()
 
-        children_data = validated_data.get('agendamentos_filhos', [])
-        
-        children_ids_from_payload = {item.get('id_agendamento') for item in children_data if item.get('id_agendamento')}
+            children_data = validated_data.get('agendamentos_filhos', [])
+            
+            children_ids_from_payload = {item.get('id_agendamento') for item in children_data if item.get('id_agendamento')}
 
-        instance.agendamentos_filhos.exclude(id_agendamento__in=children_ids_from_payload).delete()
+            instance.agendamentos_filhos.exclude(id_agendamento__in=children_ids_from_payload).delete()
 
-        for child_data in children_data:
-            child_id = child_data.get('id_agendamento')
-            child_data.pop('id_agendamento', None)
+            for child_data in children_data:
+                child_id = child_data.get('id_agendamento')
+                child_data.pop('id_agendamento', None)
 
-            if child_id:
-                Agendamento.objects.filter(id_agendamento=child_id, agendamento_pai=instance).update(**child_data)
-            else:
-                Agendamento.objects.create(agendamento_pai=instance, status_agendamento='pendente', **child_data)
+                if child_id:
+                    Agendamento.objects.filter(id_agendamento=child_id, agendamento_pai=instance).update(**child_data)
+                else:
+                    Agendamento.objects.create(agendamento_pai=instance, status_agendamento='pendente', **child_data)
 
         return instance
+
+
+class UsoImediatoSerializer(serializers.ModelSerializer):
+    recurso_nome = serializers.CharField(source='id_recurso.nome_recurso', read_only=True)
+    usuario_nome = serializers.CharField(source='id_usuario.nome', read_only=True)
+    expirado = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = UsoImediato
+        fields = [
+            'id_uso', 'id_usuario', 'id_recurso', 'recurso_nome',
+            'usuario_nome', 'finalidade', 'observacoes', 'duracao_minutos',
+            'data_inicio', 'data_fim', 'ativo', 'expirado'
+        ]
+        read_only_fields = ('id_usuario', 'data_inicio', 'ativo', 'expirado')
