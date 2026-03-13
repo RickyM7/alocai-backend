@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import timedelta
 from django.urls import reverse
@@ -115,6 +116,7 @@ class LoginAPITestCase(BaseTestCase):
         self.assertEqual(self.admin_user.google_id, 'google-admin-123')
         self.assertEqual(self.admin_user.email, 'admin.google@teste.com')
 
+    @patch.dict('os.environ', {'REGULAR_ADMIN_EMAIL': 'fake@teste.com'})
     def test_mudanca_de_senha(self):
         url = reverse('admin_change_password')
         data = {'new_password': 'new_password123'}
@@ -189,6 +191,7 @@ class LoginAPITestCase(BaseTestCase):
         response = self.client.post(url, {'credential': 'tok'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
+    @patch.dict('os.environ', {'REGULAR_ADMIN_EMAIL': 'fake@teste.com'})
     def test_mudanca_de_senha_muito_curta_retorna_400(self):
         url = reverse('admin_change_password')
         self.client.force_authenticate(user=self.admin_user)
@@ -224,11 +227,19 @@ class LoginAPITestCase(BaseTestCase):
         response = self.client.post(url, {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    @patch.dict('os.environ', {'REGULAR_ADMIN_EMAIL': 'fake@teste.com'})
     def test_mudanca_de_senha_sem_campo_retorna_400(self):
         url = reverse('admin_change_password')
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(url, {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch.dict('os.environ', {'REGULAR_ADMIN_EMAIL': 'admin@teste.com'})
+    def test_conta_de_teste_nao_pode_mudar_senha(self):
+        url = reverse('admin_change_password')
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(url, {'new_password': '123'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_vincular_google_sem_credential_retorna_400(self):
         url = reverse('admin_link_google')

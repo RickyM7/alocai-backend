@@ -18,7 +18,8 @@ class UserAdminSerializer(serializers.ModelSerializer):
             'ultimo_login',
             'id_perfil',
             'nome_perfil',
-            'tem_senha'
+            'tem_senha',
+            'is_superuser'
         ]
 
     def get_tem_senha(self, obj):

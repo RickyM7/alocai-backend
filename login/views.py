@@ -233,6 +233,15 @@ class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated, IsAdministrador]
 
     def post(self, request):
+        from decouple import config
+        
+        test_admin_email = config('REGULAR_ADMIN_EMAIL', default='')
+        if test_admin_email and request.user.email == test_admin_email:
+            return Response(
+                {"error": "A conta de teste não pode alterar a senha."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         from django.contrib.auth.password_validation import validate_password
         from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -301,6 +310,10 @@ class UserAPIView(APIView):
 
         try:
             user_to_delete = Usuario.objects.get(id_usuario=id_usuario)
+            
+            if user_to_delete.is_superuser:
+                return Response({"error": "Este administrador principal não pode ser deletado."}, status=status.HTTP_403_FORBIDDEN)
+
             user_to_delete.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Usuario.DoesNotExist:

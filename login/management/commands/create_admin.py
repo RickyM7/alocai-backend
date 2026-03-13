@@ -13,6 +13,9 @@ class Command(BaseCommand):
 
         admin_email = config('ADMIN_EMAIL', default='')
         admin_password = config('ADMIN_PASSWORD', default='')
+        
+        reg_admin_email = config('REGULAR_ADMIN_EMAIL', default='')
+        reg_admin_password = config('REGULAR_ADMIN_PASSWORD', default='')
 
         if not admin_email or not admin_password:
             self.stderr.write(self.style.WARNING(
@@ -44,3 +47,21 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f"Admin '{admin_email}' criado com sucesso."))
         else:
             self.stdout.write(self.style.WARNING(f"Admin '{admin_email}' já existe. Nenhuma ação foi tomada."))
+
+        if reg_admin_email and reg_admin_password:
+            reg_user, reg_created = Usuario.objects.get_or_create(
+                email=reg_admin_email,
+                defaults={
+                    'email_admin': reg_admin_email,
+                    'nome': 'Administrador Secundário',
+                    'password': make_password(reg_admin_password),
+                    'id_perfil': admin_profile,
+                    'is_staff': True,
+                    'is_superuser': False,
+                }
+            )
+
+            if reg_created:
+                self.stdout.write(self.style.SUCCESS(f"Admin secundário '{reg_admin_email}' criado com sucesso."))
+            else:
+                self.stdout.write(self.style.WARNING(f"Admin secundário '{reg_admin_email}' já existe. Nenhuma ação foi tomada."))
